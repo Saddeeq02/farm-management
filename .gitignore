@@ -1,0 +1,7 @@
+.env
+.env.*
+storage/views/*.php
+storage/database/*.json
+node_modules/
+vendor/
+.DS_Store
