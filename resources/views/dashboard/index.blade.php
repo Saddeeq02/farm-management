@@ -55,9 +55,6 @@
         <i class="fa-solid fa-wheat-awn text-xs"></i> {{ $activePb['current_feed_stage'] ?? 'None' }}
       </span>
     </div>
-        <i class="fa-solid fa-wheat-awn text-xs"></i> {{ $activePb['current_feed_stage'] ?? 'Grower' }}
-      </span>
-    </div>
     <div class="h-8 w-px bg-slate-300 dark:bg-slate-800 hidden sm:block"></div>
     <div class="flex flex-col">
       <span class="text-slate-500 dark:text-slate-400 text-[10px]">REMAINING FEED STORE</span>
@@ -384,9 +381,6 @@
           <span class="text-slate-500 dark:text-slate-400">Incubation Day:</span>
           <span class="font-bold text-emerald-600 dark:text-emerald-400">
             Day {{ $activeIb['incubation_day'] ?? 0 }} {{ $activeIb ? '(Thermal Setter)' : '' }}
-          </span>
-        </div>
-            Day {{ $activeIb['incubation_day'] ?? 12 }} (Thermal Setter)
           </span>
         </div>
       </div>
