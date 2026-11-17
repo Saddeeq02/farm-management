@@ -5,3 +5,4 @@ storage/database/*.json
 node_modules/
 vendor/
 .DS_Store
+

@@ -143,6 +143,16 @@ class FarmService
             $batch['species_label'] = $profile['label'];
             $batch['species_profile'] = $profile;
             $batch['setter_id'] = $batch['setter_id'] ?? 'Setter A';
+            $batch['ownership_type'] = $batch['ownership_type'] ?? 'Farm';
+            $batch['is_client_service'] = ($batch['ownership_type'] === 'Client');
+            $batch['client_name'] = (string) ($batch['client_name'] ?? '');
+            $batch['client_phone'] = (string) ($batch['client_phone'] ?? '');
+            $batch['service_fee'] = (float) ($batch['service_fee'] ?? 0);
+            $batch['amount_paid'] = (float) ($batch['amount_paid'] ?? 0);
+            $batch['balance_due'] = isset($batch['balance_due'])
+                ? (float) $batch['balance_due']
+                : max(0.0, $batch['service_fee'] - $batch['amount_paid']);
+            $batch['payment_status'] = $batch['payment_status'] ?? ($batch['balance_due'] <= 0 ? 'Paid' : ($batch['amount_paid'] > 0 ? 'Partial' : 'Pending'));
             $batch['current_stage'] = $currentStage;
             $batch['total_days'] = $totalDays;
             $batch['transfer_day'] = $transferDay;
@@ -196,8 +206,16 @@ class FarmService
                 $consumedByItem[$fId] = ($consumedByItem[$fId] ?? 0.0) + (float) $log['feed_grams'];
             }
             $mId = (int) ($log['med_item_id'] ?? 0);
-            if ($mId > 0) {
+            if ($mId > 0 && empty($log['medications_used'])) {
                 $consumedByItem[$mId] = ($consumedByItem[$mId] ?? 0.0) + (float) $log['med_dose_g_ml'];
+            }
+            if (!empty($log['medications_used']) && is_array($log['medications_used'])) {
+                foreach ($log['medications_used'] as $mu) {
+                    $muId = (int) ($mu['item_id'] ?? 0);
+                    if ($muId > 0) {
+                        $consumedByItem[$muId] = ($consumedByItem[$muId] ?? 0.0) + (float) ($mu['dose'] ?? 0);
+                    }
+                }
             }
         }
 
@@ -324,8 +342,19 @@ class FarmService
                 $medItem = isset($log['med_item_id']) ? ($invMap[(int) $log['med_item_id']] ?? null) : null;
                 $batchLogs[$idx]['feed_item_name'] = $feedItem['item_name'] ?? 'None';
                 $batchLogs[$idx]['feed_category'] = $feedItem['category'] ?? null;
-                $batchLogs[$idx]['med_item_name'] = $medItem['item_name'] ?? 'None';
-                $batchLogs[$idx]['med_unit'] = $medItem['unit_type'] ?? 'ml';
+                if (!empty($log['medications_used']) && is_array($log['medications_used'])) {
+                    $medLabels = array_map(
+                        fn($mu) => $mu['item_name'] . ' (' . number_format((float) $mu['dose']) . ($mu['unit'] ?? 'ml') . ')',
+                        $log['medications_used']
+                    );
+                    $batchLogs[$idx]['med_item_name'] = implode(', ', $medLabels);
+                    $batchLogs[$idx]['med_unit'] = '';
+                    $batchLogs[$idx]['has_multi_meds'] = true;
+                } else {
+                    $batchLogs[$idx]['med_item_name'] = $medItem['item_name'] ?? 'None';
+                    $batchLogs[$idx]['med_unit'] = $medItem['unit_type'] ?? 'ml';
+                    $batchLogs[$idx]['has_multi_meds'] = false;
+                }
                 $batchLogs[$idx]['water_other_cost'] = $waterOtherCost;
                 $batchLogs[$idx]['daily_total_cost'] = (float) $log['feed_cost_calculated']
                     + (float) $log['med_cost_calculated']
@@ -601,16 +630,33 @@ class FarmService
             $parentInfo = $profiles[$species]['label'] . ' Intake';
         }
 
+        $ownershipType = (($input['ownership_type'] ?? 'Farm') === 'Client') ? 'Client' : 'Farm';
+        $clientName = trim((string) ($input['client_name'] ?? ''));
+        $clientPhone = trim((string) ($input['client_phone'] ?? ''));
+        $serviceFee = $ownershipType === 'Client' ? max(0.0, (float) ($input['service_fee'] ?? 0)) : 0.0;
+        $amountPaid = $ownershipType === 'Client' ? max(0.0, min($serviceFee, (float) ($input['amount_paid'] ?? $serviceFee))) : 0.0;
+        $balanceDue = round(max(0.0, $serviceFee - $amountPaid), 2);
+        $paymentStatus = $ownershipType === 'Client'
+            ? ($balanceDue <= 0 ? 'Paid' : ($amountPaid > 0 ? 'Partial' : 'Pending'))
+            : 'N/A';
+
         $batchId = $this->db->insert('incubation_batches', [
             'batch_code' => $batchCode,
             'species' => $species,
             'setter_id' => trim((string) ($input['setter_id'] ?? 'Setter A')),
-            'parent_flock_info' => $parentInfo,
+            'parent_flock_info' => $clientName !== '' ? (($ownershipType === 'Client' ? 'Client: ' : 'Brought by: ') . $clientName) : $parentInfo,
             'flock_age_weeks' => max(18, (int) ($input['flock_age_weeks'] ?? 32)),
             'eggs_set' => max(1, (int) ($input['eggs_set'] ?? 1000)),
-            'egg_cost' => max(0.0, (float) ($input['egg_cost'] ?? 0)),
+            'egg_cost' => $ownershipType === 'Client' ? 0.0 : max(0.0, (float) ($input['egg_cost'] ?? 0)),
             'start_date' => $startDate,
             'status' => 'Active',
+            'ownership_type' => $ownershipType,
+            'client_name' => $clientName,
+            'client_phone' => $clientPhone,
+            'service_fee' => round($serviceFee, 2),
+            'amount_paid' => round($amountPaid, 2),
+            'balance_due' => $balanceDue,
+            'payment_status' => $paymentStatus,
         ]);
 
         // Automatically record First Gas Intake if provided
@@ -1021,20 +1067,64 @@ class FarmService
             }
         }
 
-        // Medication dosage (in g or ml)
-        $medItemId = !empty($input['med_item_id']) ? (int) $input['med_item_id'] : null;
-        $medDose = max(0.0, (float) ($input['med_dose_g_ml'] ?? 0));
+        // Medication dosages (multi-checkbox med_items[] + med_doses[] OR legacy single med_item_id + med_dose_g_ml)
+        $medicationsUsed = [];
+        $medItemId = null;
+        $medDose = 0.0;
         $medCostCalculated = 0.0;
 
-        if ($medItemId && $medDose > 0) {
-            $medItem = $this->db->findById('inventory_items', $medItemId);
-            if ($medItem) {
-                $unitCost = (float) $medItem['unit_cost_per_g_or_ml'];
-                $medCostCalculated = round($medDose * $unitCost, 2);
-                $newRemaining = max(0.0, (float) $medItem['total_quantity_g_or_ml'] - $medDose);
-                $this->db->update('inventory_items', $medItemId, [
-                    'total_quantity_g_or_ml' => round($newRemaining, 2),
-                ]);
+        $checkedMedIds = isset($input['med_items']) && is_array($input['med_items']) ? $input['med_items'] : [];
+        $medDosesMap = isset($input['med_doses']) && is_array($input['med_doses']) ? $input['med_doses'] : [];
+
+        if (!empty($checkedMedIds)) {
+            foreach ($checkedMedIds as $rawId) {
+                $id = (int) $rawId;
+                $dose = max(0.0, (float) ($medDosesMap[$id] ?? $medDosesMap[(string) $id] ?? 0));
+                if ($id > 0 && $dose > 0) {
+                    $medItem = $this->db->findById('inventory_items', $id);
+                    if ($medItem) {
+                        $unitCost = (float) $medItem['unit_cost_per_g_or_ml'];
+                        $cost = round($dose * $unitCost, 2);
+                        $newRemaining = max(0.0, (float) $medItem['total_quantity_g_or_ml'] - $dose);
+                        $this->db->update('inventory_items', $id, [
+                            'total_quantity_g_or_ml' => round($newRemaining, 2),
+                        ]);
+                        $medicationsUsed[] = [
+                            'item_id' => $id,
+                            'item_name' => $medItem['item_name'],
+                            'dose' => $dose,
+                            'unit' => $medItem['unit_type'] ?? 'ml',
+                            'cost' => $cost,
+                        ];
+                        $medDose += $dose;
+                        $medCostCalculated += $cost;
+                        if ($medItemId === null) {
+                            $medItemId = $id;
+                        }
+                    }
+                }
+            }
+            $medCostCalculated = round($medCostCalculated, 2);
+        } else {
+            $medItemId = !empty($input['med_item_id']) ? (int) $input['med_item_id'] : null;
+            $medDose = max(0.0, (float) ($input['med_dose_g_ml'] ?? 0));
+            if ($medItemId && $medDose > 0) {
+                $medItem = $this->db->findById('inventory_items', $medItemId);
+                if ($medItem) {
+                    $unitCost = (float) $medItem['unit_cost_per_g_or_ml'];
+                    $medCostCalculated = round($medDose * $unitCost, 2);
+                    $newRemaining = max(0.0, (float) $medItem['total_quantity_g_or_ml'] - $medDose);
+                    $this->db->update('inventory_items', $medItemId, [
+                        'total_quantity_g_or_ml' => round($newRemaining, 2),
+                    ]);
+                    $medicationsUsed[] = [
+                        'item_id' => $medItemId,
+                        'item_name' => $medItem['item_name'],
+                        'dose' => $medDose,
+                        'unit' => $medItem['unit_type'] ?? 'ml',
+                        'cost' => $medCostCalculated,
+                    ];
+                }
             }
         }
 
@@ -1053,6 +1143,7 @@ class FarmService
             'med_item_id' => $medItemId,
             'med_dose_g_ml' => $medDose,
             'med_cost_calculated' => $medCostCalculated,
+            'medications_used' => $medicationsUsed,
             'labor_cost' => $laborCost,
             'sanitation_cost' => $sanitationCost,
             'water_other_cost' => $waterOtherCost,
@@ -1381,7 +1472,7 @@ class FarmService
                 if ($d === $today) {
                     $todayMortality += (int) ($pl['mortality_count'] ?? 0);
                 }
-                if (($d === $today || $d === $yesterday) && !empty($pl['med_item_id']) && (float) ($pl['med_dose_g_ml'] ?? 0) > 0) {
+                if (($d === $today || $d === $yesterday) && ((!empty($pl['med_item_id']) && (float) ($pl['med_dose_g_ml'] ?? 0) > 0) || !empty($pl['medications_used']))) {
                     $recentMed = true;
                 }
             }
@@ -1576,6 +1667,42 @@ class FarmService
         return $this->db->delete('fixed_assets', $id);
     }
 
+    public function recordIncubationPayment(int $batchId, float $paymentAmount): bool
+    {
+        $batch = $this->db->findById('incubation_batches', $batchId);
+        if (!$batch) {
+            throw new RuntimeException('Incubation batch not found.');
+        }
+        $fee = (float) ($batch['service_fee'] ?? 0);
+        $paid = (float) ($batch['amount_paid'] ?? 0);
+        $newPaid = round(min($fee, $paid + max(0.0, $paymentAmount)), 2);
+        $newBalance = round(max(0.0, $fee - $newPaid), 2);
+        $newStatus = $newBalance <= 0 ? 'Paid' : ($newPaid > 0 ? 'Partial' : 'Pending');
+
+        return $this->db->update('incubation_batches', $batchId, [
+            'amount_paid' => $newPaid,
+            'balance_due' => $newBalance,
+            'payment_status' => $newStatus,
+        ]);
+    }
+
+    public function markIncubationCollected(int $batchId): bool
+    {
+        $batch = $this->db->findById('incubation_batches', $batchId);
+        if (!$batch) {
+            throw new RuntimeException('Incubation batch not found.');
+        }
+        return $this->db->update('incubation_batches', $batchId, [
+            'status' => 'Collected',
+            'collected_date' => date('Y-m-d'),
+        ]);
+    }
+
+    public function clearAllFarmData(): void
+    {
+        $this->db->clearAllFarmData();
+    }
+
     public function getWholeFarmFinancials(): array
     {
         $fixedAssets = $this->getFixedAssets();
@@ -1657,26 +1784,38 @@ class FarmService
 
         $incubatorEggAssetValue = 0.0;
         $totalIncubationSpend = 0.0;
+        $clientHatchBilled = 0.0;
+        $clientHatchCollected = 0.0;
+        $clientHatchReceivables = 0.0;
         foreach ($incBatches as $ib) {
-            $incCost = (float) ($ib['total_batch_cost'] ?? 0);
+            $incCost = (float) ($ib['metrics']['total_incubation_cost'] ?? $ib['total_batch_cost'] ?? 0);
             $totalIncubationSpend += $incCost;
-            if (($ib['status'] ?? '') === 'Active') {
+            $isClient = (($ib['ownership_type'] ?? 'Farm') === 'Client');
+            if (!$isClient && ($ib['status'] ?? '') === 'Active') {
                 $incubatorEggAssetValue += $incCost;
             }
+            $svcFee = $isClient ? (float) ($ib['service_fee'] ?? 0) : 0.0;
+            $svcPaid = $isClient ? (float) ($ib['amount_paid'] ?? 0) : 0.0;
+            $svcDue = $isClient ? (float) ($ib['balance_due'] ?? 0) : 0.0;
+            if ($isClient) {
+                $clientHatchBilled += $svcFee;
+                $clientHatchCollected += $svcPaid;
+                $clientHatchReceivables += $svcDue;
+            }
             $batchRows[] = [
-                'stage' => 'Incubator',
+                'stage' => $isClient ? 'Client Hatch' : 'Incubator',
                 'batch_code' => $ib['batch_code'],
                 'label' => ($ib['species_label'] ?? 'Hatchery') . ' • ' . ($ib['parent_flock_info'] ?? ''),
                 'status' => $ib['status'],
-                'units_label' => number_format((int) ($ib['total_eggs_set'] ?? 0)) . ' eggs • Day ' . (int) ($ib['incubation_day'] ?? 0),
+                'units_label' => number_format((int) ($ib['eggs_set'] ?? 0)) . ' eggs • Day ' . (int) ($ib['incubation_day'] ?? 0),
                 'base_cost' => (float) ($ib['egg_cost'] ?? 0),
                 'feed_med_cost' => 0.0,
-                'overhead_other' => (float) ($ib['gas_and_repairs_total'] ?? 0),
+                'overhead_other' => (float) ($ib['metrics']['gas_cost'] ?? 0) + (float) ($ib['metrics']['repair_cost'] ?? 0),
                 'total_cost' => $incCost,
-                'revenue_billed' => 0.0,
-                'cash_collected' => 0.0,
-                'receivables' => 0.0,
-                'net_profit' => round(-$incCost, 2),
+                'revenue_billed' => $svcFee,
+                'cash_collected' => $svcPaid,
+                'receivables' => $svcDue,
+                'net_profit' => round($svcFee - $incCost, 2),
             ];
         }
 
@@ -1686,9 +1825,9 @@ class FarmService
         }
         $storeInventoryValue = round($storeInventoryValue, 2);
 
-        $cashCollectedAll = 0.0;
-        $receivablesAll = 0.0;
-        $billedAll = 0.0;
+        $cashCollectedAll = $clientHatchCollected;
+        $receivablesAll = $clientHatchReceivables;
+        $billedAll = $clientHatchBilled;
         foreach ($sales as $s) {
             $tot = (float) ($s['total_amount'] ?? 0);
             $paid = isset($s['amount_paid']) ? (float) $s['amount_paid'] : (($s['payment_status'] ?? '') === 'Paid' ? $tot : 0.0);
@@ -1698,11 +1837,12 @@ class FarmService
             $receivablesAll += $due;
         }
 
-        // Unlinked active incubator spend not yet pushed to production
+        // Unlinked incubator spend not yet pushed to production (or client batches)
         $untransferredIncCost = 0.0;
         foreach ($incBatches as $ib) {
-            if (($ib['status'] ?? '') === 'Active') {
-                $untransferredIncCost += (float) ($ib['total_batch_cost'] ?? 0);
+            $isClient = (($ib['ownership_type'] ?? 'Farm') === 'Client');
+            if ($isClient || empty($ib['linked_production_batch'])) {
+                $untransferredIncCost += (float) ($ib['metrics']['total_incubation_cost'] ?? 0);
             }
         }
 

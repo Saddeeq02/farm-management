@@ -205,6 +205,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: /?page=production');
                 exit;
 
+            case 'record_incubation_payment':
+                $farm->recordIncubationPayment(
+                    (int) ($_POST['incubation_batch_id'] ?? 0),
+                    (float) ($_POST['payment_amount'] ?? 0)
+                );
+                $_SESSION['flash_success'] = 'Client hatching service payment recorded.';
+                header('Location: /?page=incubation');
+                exit;
+
+            case 'mark_incubation_collected':
+                $farm->markIncubationCollected((int) ($_POST['incubation_batch_id'] ?? 0));
+                $_SESSION['flash_success'] = 'Client chicks marked as collected and batch archived.';
+                header('Location: /?page=incubation');
+                exit;
+
             case 'add_inventory_item':
                 $farm->addInventoryItem($_POST);
                 $_SESSION['flash_success'] = 'Bulk purchase converted to base units (g/ml) and unit cost computed.';
@@ -330,6 +345,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['flash_success'] = 'Fixed asset removed from register.';
                 }
                 header('Location: /?page=finance');
+                exit;
+
+            case 'clear_all_farm_data':
+                $confirmText = strtoupper(trim((string) ($_POST['confirm_clear'] ?? '')));
+                if ($confirmText !== 'CLEAR') {
+                    throw new InvalidArgumentException('Type CLEAR to confirm wiping all farm data.');
+                }
+                $farm->clearAllFarmData();
+                $_SESSION['flash_success'] = 'All farm data cleared. You are starting with a clean database.';
+                header('Location: /?page=dashboard');
                 exit;
 
             case 'change_manager_password':

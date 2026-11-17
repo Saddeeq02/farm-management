@@ -235,6 +235,9 @@
             @foreach ($incubationBatches as $ib)
               <option value="{{ $ib['batch_code'] }}">{{ $ib['batch_code'] }} ({{ $ib['parent_flock_info'] }} - Day {{ $ib['incubation_day'] }})</option>
             @endforeach
+            @if (empty($productionBatches) && empty($incubationBatches))
+              <option value="">No Active Batches</option>
+            @endif
           </select>
         </div>
 
@@ -275,6 +278,9 @@
           @foreach ($incubationBatches as $ib)
             <option value="{{ $ib['batch_code'] }}" class="bg-white dark:bg-slate-900">{{ $ib['batch_code'] }} ({{ $ib['parent_flock_info'] }} • Day {{ $ib['incubation_day'] }})</option>
           @endforeach
+          @if (empty($productionBatches) && empty($incubationBatches))
+            <option value="" class="bg-white dark:bg-slate-900">No Active Batches</option>
+          @endif
         </select>
       </div>
       <div class="grid grid-cols-3 gap-2">
@@ -365,6 +371,10 @@
               <span>Sign Out</span>
             </a>
           </div>
+          <button type="button" onclick="openModal('clearFarmDataModal')" class="w-full mt-2 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-500/25 bg-rose-500/5 hover:bg-rose-500/15 text-rose-600 dark:text-rose-400 text-[10px] font-mono font-semibold transition-all cursor-pointer">
+            <i class="fa-solid fa-trash-can"></i>
+            <span>Clear All Farm Data</span>
+          </button>
         </div>
       </aside>
 
@@ -699,21 +709,30 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-slate-700 dark:text-slate-300 mb-1">Medication in Store</label>
-            <select name="med_item_id" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white outline-none focus:border-purple-500">
-              <option value="">-- None / Routine Water --</option>
-              @foreach ($inventoryItems as $item)
-                @if ($item['category'] === 'medicine')
-                  <option value="{{ $item['id'] }}">{{ $item['item_name'] }} (₦{{ number_format((float)$item['unit_cost_per_g_or_ml'], 2) }}/{{ $item['unit_label'] }} • {{ number_format((float)$item['total_quantity_g_or_ml']) }}{{ $item['unit_label'] }} left)</option>
-                @endif
-              @endforeach
-            </select>
-          </div>
-          <div>
-            <label class="block text-slate-700 dark:text-slate-300 mb-1">Med Dosage (ml/g)</label>
-            <input type="number" step="0.1" name="med_dose_g_ml" placeholder="e.g. 250" value="0" min="0" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-purple-600 dark:text-purple-300 outline-none">
+        <div>
+          <label class="block text-slate-700 dark:text-slate-300 mb-1.5">Medications &amp; Vaccines (Tick one or more &amp; enter dosage)</label>
+          <div class="max-h-40 overflow-y-auto space-y-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900/60 p-2.5">
+            @php $medList = array_filter($inventoryItems ?? [], fn($it) => ($it['category'] ?? '') === 'medicine'); @endphp
+            @forelse ($medList as $item)
+              <div class="flex items-center justify-between gap-2 bg-white dark:bg-slate-800/90 rounded-lg px-2.5 py-1.5 border border-slate-200 dark:border-slate-700">
+                <label class="flex items-center gap-2 min-w-0 cursor-pointer flex-1">
+                  <input type="checkbox" name="med_items[]" value="{{ $item['id'] }}"
+                         onchange="const inp = this.closest('div').querySelector('input[type=number]'); inp.disabled = !this.checked; if(!this.checked) inp.value=''; else inp.focus();"
+                         class="rounded text-emerald-500 focus:ring-emerald-500">
+                  <span class="text-[11px] font-medium text-slate-800 dark:text-slate-100 truncate">
+                    {{ $item['item_name'] }}
+                    <span class="font-mono text-[10px] text-slate-500 dark:text-slate-400">({{ number_format((float)$item['total_quantity_g_or_ml']) }}{{ $item['unit_label'] }})</span>
+                  </span>
+                </label>
+                <div class="flex items-center gap-1 shrink-0">
+                  <input type="number" step="0.1" min="0" name="med_doses[{{ $item['id'] }}]" placeholder="Dose" disabled
+                         class="w-20 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-purple-600 dark:text-purple-300 px-2 py-1 text-[11px] font-mono outline-none disabled:opacity-40">
+                  <span class="text-[10px] font-mono text-slate-500">{{ $item['unit_label'] }}</span>
+                </div>
+              </div>
+            @empty
+              <p class="text-[11px] text-slate-400 italic py-1">No medications or vaccines in store yet.</p>
+            @endforelse
           </div>
         </div>
 
@@ -861,12 +880,12 @@
     // System State Store
     const state = {
       isDark: true,
-      currentBatchId: 'PRD-2026-01',
-      liveHeadcount: {{ $summary['total_live_birds'] ?? 5570 }},
-      accumulatedExpenses: 3428500,
+      currentBatchId: '{{ $productionBatches[0]['batch_code'] ?? $incubationBatches[0]['batch_code'] ?? '' }}',
+      liveHeadcount: {{ $summary['total_live_birds'] ?? 0 }},
+      accumulatedExpenses: {{ $productionBatches[0]['metrics']['total_accumulated_cost'] ?? 0 }},
       feedUnitCostGrams: 0.42,
-      targetMarginPct: 35,
-      mortalityCount: 65,
+      targetMarginPct: {{ $productionBatches[0]['target_profit_margin_pct'] ?? $productionBatches[0]['metrics']['target_margin_pct'] ?? 35 }},
+      mortalityCount: {{ $productionBatches[0]['metrics']['total_mortality'] ?? 0 }},
       isAiDrawerOpen: false
     };
 
@@ -1146,16 +1165,30 @@
       const donutCanvas = document.getElementById('costBreakdownChart');
       if (donutCanvas) {
         const ctxDonut = donutCanvas.getContext('2d');
+        const feedCost = {{ $productionBatches[0]['metrics']['costs']['feed'] ?? 0 }};
+        const incubCost = {{ $productionBatches[0]['metrics']['costs']['initial_chicks'] ?? 0 }};
+        const rentCost = {{ $productionBatches[0]['fixed_house_rent'] ?? 0 }};
+        const medCost = {{ ($productionBatches[0]['metrics']['costs']['medication'] ?? 0) + ($productionBatches[0]['metrics']['costs']['sanitation'] ?? 0) }};
+        const laborCost = {{ $productionBatches[0]['metrics']['costs']['labor'] ?? 0 }};
+        const totalCost = feedCost + incubCost + rentCost + medCost + laborCost;
+        const hasData = totalCost > 0;
+
         costBreakdownChart = new Chart(ctxDonut, {
           type: 'doughnut',
           data: {
-            labels: ['Feed Intake', 'Incubation Base', 'Barn Rent (Lump-Sum)', 'Medication & Sanit.', 'Labor'],
+            labels: hasData
+              ? ['Feed Intake', 'Incubation Base', 'Barn Rent (Lump-Sum)', 'Medication & Sanit.', 'Labor']
+              : ['No Expenses Logged Yet'],
             datasets: [{
-              data: [2057100, 580000, 450000, 191400, 150000],
-              backgroundColor: ['#10b981', '#06b6d4', '#f59e0b', '#a855f7', '#f43f5e'],
+              data: hasData
+                ? [feedCost, incubCost, rentCost, medCost, laborCost]
+                : [1],
+              backgroundColor: hasData
+                ? ['#10b981', '#06b6d4', '#f59e0b', '#a855f7', '#f43f5e']
+                : [isDark ? '#334155' : '#e2e8f0'],
               borderWidth: 2,
               borderColor: borderColor,
-              hoverOffset: 6
+              hoverOffset: hasData ? 6 : 0
             }]
           },
           options: {
@@ -1172,10 +1205,12 @@
                 }
               },
               tooltip: {
+                enabled: hasData,
                 callbacks: {
                   label: function(item) {
                     const val = item.raw;
-                    return ` ₦ ${val.toLocaleString()} (${((val / 3428500) * 100).toFixed(1)}%)`;
+                    const pct = totalCost > 0 ? ((val / totalCost) * 100).toFixed(1) : 0;
+                    return ` ₦ ${val.toLocaleString()} (${pct}%)`;
                   }
                 }
               }
@@ -1189,13 +1224,17 @@
       const candleCanvas = document.getElementById('candlingChart');
       if (candleCanvas) {
         const ctxCandle = candleCanvas.getContext('2d');
+        const clears = {{ $incubationBatches[0]['metrics']['infertiles'] ?? $incubationBatches[0]['metrics']['total_infertile_eggs'] ?? 0 }};
+        const earlyDead = {{ $incubationBatches[0]['metrics']['early_deaths'] ?? 0 }};
+        const cracked = {{ $incubationBatches[0]['metrics']['cracked'] ?? $incubationBatches[0]['metrics']['total_cracked_eggs'] ?? 0 }};
+        const dis = {{ $incubationBatches[0]['metrics']['candling_dis'] ?? 0 }};
         candlingChart = new Chart(ctxCandle, {
           type: 'bar',
           data: {
             labels: ['Clears', 'Early Dead', 'Cracked', 'DIS'],
             datasets: [{
               label: 'Eggs Discarded',
-              data: [477, 250, 65, 142],
+              data: [clears, earlyDead, cracked, dis],
               backgroundColor: ['#f59e0b', '#f43f5e', '#64748b', '#ef4444'],
               borderRadius: 6
             }]
@@ -1524,6 +1563,35 @@
         <div class="pt-2 flex items-center justify-end gap-2">
           <button type="button" onclick="closeModal('changePasswordModal')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold cursor-pointer">Cancel</button>
           <button type="submit" class="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold cursor-pointer">Update Password</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Clear All Farm Data Modal -->
+  <div id="clearFarmDataModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/75 backdrop-blur-sm p-4">
+    <div id="clearFarmDataModalBox" class="glass-card rounded-3xl w-full max-w-md p-6 shadow-2xl border border-rose-500/40">
+      <div class="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800/80 pb-3 mb-4">
+        <h3 class="text-sm font-bold text-rose-600 dark:text-rose-400 flex items-center gap-2">
+          <i class="fa-solid fa-triangle-exclamation"></i> Clear All Farm Data
+        </h3>
+        <button type="button" onclick="closeModal('clearFarmDataModal')" class="text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+      <p class="text-xs text-slate-600 dark:text-slate-300 mb-3 leading-relaxed">
+        This will permanently erase all batches, daily logs, inventory, sales, fixed assets, overhead expenses, and AI chat/memory so you can start completely fresh. Your Farm Manager login password will be kept.
+      </p>
+      <form method="POST" action="/?page={{ $currentPage ?? 'dashboard' }}" class="space-y-3.5">
+        <input type="hidden" name="action" value="clear_all_farm_data">
+        <div>
+          <label class="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Type <code class="font-mono text-rose-500 font-bold">CLEAR</code> to confirm</label>
+          <input type="text" name="confirm_clear" required placeholder="CLEAR" autocomplete="off"
+                 class="w-full rounded-xl border border-rose-300 dark:border-rose-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-rose-500 focus:outline-none">
+        </div>
+        <div class="pt-2 flex items-center justify-end gap-2">
+          <button type="button" onclick="closeModal('clearFarmDataModal')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold cursor-pointer">Cancel</button>
+          <button type="submit" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold cursor-pointer">Wipe &amp; Start Fresh</button>
         </div>
       </form>
     </div>

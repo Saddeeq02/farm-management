@@ -123,28 +123,31 @@
 
                     <div class="p-3.5 rounded-xl bg-white/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-700/70 space-y-2.5">
                         <div class="flex items-center justify-between">
-                            <span class="text-xs font-bold text-slate-800 dark:text-slate-100">Medication / Clinical Dosage (g or ml)</span>
-                            <span id="liveMedCostBadge" class="text-[11px] font-mono font-semibold text-cyan-700 dark:text-cyan-400">Auto ₦/ml</span>
+                            <span class="text-xs font-bold text-slate-800 dark:text-slate-100">Medications &amp; Vaccines (Tick &amp; Enter Dosage)</span>
+                            <span id="liveMedCostBadge" class="text-[11px] font-mono font-semibold text-cyan-700 dark:text-cyan-400">Multi-Med Ready</span>
                         </div>
-                        <div>
-                            <label class="block text-[11px] text-slate-600 dark:text-slate-400 mb-1">Select Medicine / Vaccine</label>
-                            <select name="med_item_id" id="prodMedSelect" onchange="updateDailyTelemetryCostPreview()"
-                                    class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-1.5 text-xs focus:border-cyan-500 focus:outline-none">
-                                <option value="" data-rate="0">-- No Medication Administered --</option>
-                                @foreach ($inventoryItems as $item)
-                                    @if ($item['category'] === 'medicine')
-                                        <option value="{{ $item['id'] }}" data-rate="{{ $item['unit_cost_per_g_or_ml'] }}">
-                                            {{ $item['item_name'] }} (₦{{ number_format((float)$item['unit_cost_per_g_or_ml'], 2) }}/{{ $item['unit_label'] }} • {{ number_format((float)$item['total_quantity_g_or_ml']) }}{{ $item['unit_label'] }} left)
-                                        </option>
-                                    @endif
-                                @endforeach
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-[11px] text-slate-600 dark:text-slate-400 mb-1">Exact Dosage Administered (g or ml)</label>
-                            <input type="number" step="0.1" name="med_dose_g_ml" id="prodMedDose" value="250" min="0"
-                                   oninput="updateDailyTelemetryCostPreview()"
-                                   class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-1.5 text-xs font-mono focus:border-cyan-500 focus:outline-none">
+                        <div class="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                            @php $prodMedList = array_filter($inventoryItems ?? [], fn($it) => ($it['category'] ?? '') === 'medicine'); @endphp
+                            @forelse ($prodMedList as $item)
+                                <div class="flex items-center justify-between gap-2 bg-white/90 dark:bg-slate-800/90 rounded-lg px-2.5 py-1.5 border border-slate-200 dark:border-slate-700">
+                                    <label class="flex items-center gap-2 min-w-0 cursor-pointer flex-1">
+                                        <input type="checkbox" name="med_items[]" value="{{ $item['id'] }}"
+                                               onchange="const inp = this.closest('div').querySelector('input[type=number]'); inp.disabled = !this.checked; if(!this.checked) inp.value=''; else inp.focus();"
+                                               class="rounded text-cyan-500 focus:ring-cyan-500">
+                                        <span class="text-[11px] font-medium text-slate-800 dark:text-slate-100 truncate">
+                                            {{ $item['item_name'] }}
+                                            <span class="font-mono text-[10px] text-slate-500 dark:text-slate-400">({{ number_format((float)$item['total_quantity_g_or_ml']) }}{{ $item['unit_label'] }})</span>
+                                        </span>
+                                    </label>
+                                    <div class="flex items-center gap-1 shrink-0">
+                                        <input type="number" step="0.1" min="0" name="med_doses[{{ $item['id'] }}]" placeholder="Dose" disabled
+                                               class="w-20 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-cyan-700 dark:text-cyan-300 px-2 py-1 text-[11px] font-mono outline-none disabled:opacity-40">
+                                        <span class="text-[10px] font-mono text-slate-500">{{ $item['unit_label'] }}</span>
+                                    </div>
+                                </div>
+                            @empty
+                                <p class="text-[11px] text-slate-400 italic py-1">No medications or vaccines in store yet.</p>
+                            @endforelse
                         </div>
                     </div>
                 </div>
@@ -383,7 +386,9 @@
                                 <td class="py-2.5 text-right text-slate-800 dark:text-slate-100">₦{{ number_format((float)$log['feed_cost_calculated'], 2) }}</td>
                                 <td class="py-2.5 font-sans text-slate-800 dark:text-slate-100">
                                     {{ $log['med_item_name'] }}
-                                    <span class="font-mono text-slate-500 dark:text-slate-400">({{ number_format((float)$log['med_dose_g_ml']) }}{{ $log['med_unit'] }})</span>
+                                    @if (empty($log['has_multi_meds']) && (float)$log['med_dose_g_ml'] > 0)
+                                        <span class="font-mono text-slate-500 dark:text-slate-400">({{ number_format((float)$log['med_dose_g_ml']) }}{{ $log['med_unit'] }})</span>
+                                    @endif
                                 </td>
                                 <td class="py-2.5 text-right text-slate-800 dark:text-slate-100">₦{{ number_format((float)$log['med_cost_calculated'], 2) }}</td>
                                 <td class="py-2.5 text-right text-slate-700 dark:text-slate-200">₦{{ number_format((float)$log['labor_cost'] + (float)$log['sanitation_cost'] + (float)($log['water_other_cost'] ?? 0), 2) }}</td>

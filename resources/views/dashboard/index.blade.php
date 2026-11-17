@@ -6,14 +6,14 @@
 @php
     $activePb = $productionBatches[0] ?? null;
     $activeIb = $incubationBatches[0] ?? null;
-    $liveBirds = $summary['total_live_birds'] ?? 5570;
-    $totalExpenses = $activePb ? ($activePb['metrics']['total_accumulated_cost'] ?? 3428500) : 3428500;
-    $costPerBird = $activePb ? ($activePb['metrics']['cost_per_bird'] ?? 712.50) : 712.50;
-    $mortalityPct = $activePb ? ($activePb['metrics']['mortality_rate_pct'] ?? 2.0) : 2.0;
-    $mortalityCount = $activePb ? ($activePb['metrics']['total_mortality'] ?? 45) : 45;
-    $recPrice = $activePb ? ($activePb['metrics']['recommended_selling_price'] ?? 961.88) : 961.88;
+    $liveBirds = $summary['total_live_birds'] ?? 0;
+    $totalExpenses = $activePb ? ($activePb['metrics']['total_accumulated_cost'] ?? 0) : 0;
+    $costPerBird = $activePb ? ($activePb['metrics']['cost_per_bird'] ?? 0) : 0;
+    $mortalityPct = $activePb ? ($activePb['metrics']['mortality_rate_pct'] ?? 0) : 0;
+    $mortalityCount = $activePb ? ($activePb['metrics']['total_mortality'] ?? 0) : 0;
+    $recPrice = $activePb ? ($activePb['metrics']['recommended_selling_price'] ?? 0) : 0;
     $marginPct = $activePb ? ($activePb['target_profit_margin_pct'] ?? $activePb['metrics']['target_margin_pct'] ?? 35) : 35;
-    $projectedProfit = $activePb ? ($activePb['metrics']['projected_net_profit'] ?? 1199985) : 1199985;
+    $projectedProfit = $activePb ? ($activePb['metrics']['projected_net_profit'] ?? 0) : 0;
 @endphp
 
 <!-- 1. BATCH CONTEXT BAR -->
@@ -25,10 +25,14 @@
     <div>
       <div class="flex items-center gap-2 flex-wrap">
         <span class="text-base font-extrabold text-slate-900 dark:text-white tracking-wide" id="activeBatchTitle">
-          Batch #{{ $activePb['batch_code'] ?? 'PRD-2026-01' }} • {{ $activePb['flock_type'] ?? 'Cobb 500 Broilers' }}
+          @if ($activePb)
+            Batch #{{ $activePb['batch_code'] }} • {{ $activePb['flock_type'] }}
+          @else
+            No Active Production Flock
+          @endif
         </span>
         <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-mono font-bold border border-emerald-500/30">
-          {{ $activePb['status'] ?? 'Active Production' }}
+          {{ $activePb['status'] ?? 'No Active Flock' }}
         </span>
         @if ($activePb && $activePb['feed_alert']['needs_transition'])
           <span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 font-mono font-bold border border-amber-500/40 animate-pulse">
@@ -37,9 +41,9 @@
         @endif
       </div>
       <p class="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-        House: <strong class="text-slate-700 dark:text-slate-200">{{ $activePb['house_pen_id'] ?? 'Barn 01' }}</strong> • 
-        Age: <strong class="text-slate-700 dark:text-slate-200">Day {{ $activePb['age_days'] ?? 31 }} (Wk {{ $activePb['age_weeks'] ?? 5 }})</strong> • 
-        Scheduled Harvest: <strong class="text-slate-700 dark:text-slate-200">Day 42</strong>
+        House: <strong class="text-slate-700 dark:text-slate-200">{{ $activePb['house_pen_id'] ?? '—' }}</strong> • 
+        Age: <strong class="text-slate-700 dark:text-slate-200">Day {{ $activePb['age_days'] ?? 0 }} (Wk {{ $activePb['age_weeks'] ?? 0 }})</strong> • 
+        Scheduled Harvest: <strong class="text-slate-700 dark:text-slate-200">{{ $activePb ? 'Day 42' : '—' }}</strong>
       </p>
     </div>
   </div>
@@ -48,6 +52,9 @@
     <div class="flex flex-col">
       <span class="text-slate-500 dark:text-slate-400 text-[10px]">FEED STAGE</span>
       <span class="font-bold text-amber-600 dark:text-amber-400 text-sm flex items-center gap-1">
+        <i class="fa-solid fa-wheat-awn text-xs"></i> {{ $activePb['current_feed_stage'] ?? 'None' }}
+      </span>
+    </div>
         <i class="fa-solid fa-wheat-awn text-xs"></i> {{ $activePb['current_feed_stage'] ?? 'Grower' }}
       </span>
     </div>
@@ -82,7 +89,7 @@
         {{ number_format($liveBirds) }}
       </span>
       <span class="text-xs text-slate-500 dark:text-slate-400 font-mono">
-        / {{ number_format($summary['total_live_birds'] + 150) }} birds
+        / {{ number_format($summary['total_live_birds'] ?? 0) }} birds
       </span>
     </div>
     <div class="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800/80 flex items-center justify-between text-xs">
@@ -111,7 +118,7 @@
     </div>
     <div class="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800/80 flex items-center justify-between text-xs">
       <span class="text-slate-500 dark:text-slate-400">Mortality Burden Share:</span>
-      <span class="font-mono text-slate-700 dark:text-slate-300 font-semibold">+₦ 27.80 / bird</span>
+      <span class="font-mono text-slate-700 dark:text-slate-300 font-semibold">+₦ {{ number_format($activePb['metrics']['mortality_cost_burden_per_bird'] ?? 0, 2) }} / bird</span>
     </div>
     <div class="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-1.5 mt-2 overflow-hidden">
       <div class="bg-gradient-to-r from-cyan-500 to-blue-500 h-1.5 rounded-full" style="width: 72%"></div>
@@ -225,27 +232,27 @@
       <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-4 mt-2 border-t border-slate-200 dark:border-slate-800/80 text-xs font-mono">
         <div class="p-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
           <span class="text-slate-500 dark:text-slate-400 block text-[10px]">FEED INTAKE</span>
-          <span class="text-emerald-600 dark:text-emerald-400 font-bold">₦ {{ number_format($activePb['metrics']['costs']['feed'] ?? 674500) }}</span>
+          <span class="text-emerald-600 dark:text-emerald-400 font-bold">₦ {{ number_format($activePb['metrics']['costs']['feed'] ?? 0) }}</span>
           <span class="text-slate-400 dark:text-slate-500 block text-[9px]">Calculated g/ml</span>
         </div>
         <div class="p-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
           <span class="text-slate-500 dark:text-slate-400 block text-[10px]">INCUB. BASE</span>
-          <span class="text-cyan-600 dark:text-cyan-400 font-bold">₦ {{ number_format($activePb['metrics']['costs']['initial_chicks'] ?? 879850) }}</span>
+          <span class="text-cyan-600 dark:text-cyan-400 font-bold">₦ {{ number_format($activePb['metrics']['costs']['initial_chicks'] ?? 0) }}</span>
           <span class="text-slate-400 dark:text-slate-500 block text-[9px]">Eggs + Gas carried</span>
         </div>
         <div class="p-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
           <span class="text-slate-500 dark:text-slate-400 block text-[10px]">BARN RENT</span>
-          <span class="text-amber-600 dark:text-amber-400 font-bold">₦ {{ number_format($activePb['fixed_house_rent'] ?? 250000) }}</span>
+          <span class="text-amber-600 dark:text-amber-400 font-bold">₦ {{ number_format($activePb['fixed_house_rent'] ?? 0) }}</span>
           <span class="text-slate-400 dark:text-slate-500 block text-[9px]">Lump-sum cycle</span>
         </div>
         <div class="p-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
           <span class="text-slate-500 dark:text-slate-400 block text-[10px]">VET & SANIT.</span>
-          <span class="text-purple-600 dark:text-purple-400 font-bold">₦ {{ number_format(($activePb['metrics']['costs']['medication'] ?? 28000) + ($activePb['metrics']['costs']['sanitation'] ?? 9500)) }}</span>
+          <span class="text-purple-600 dark:text-purple-400 font-bold">₦ {{ number_format(($activePb['metrics']['costs']['medication'] ?? 0) + ($activePb['metrics']['costs']['sanitation'] ?? 0)) }}</span>
           <span class="text-slate-400 dark:text-slate-500 block text-[9px]">Meds & bio-security</span>
         </div>
         <div class="p-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 col-span-2 sm:col-span-1">
           <span class="text-slate-500 dark:text-slate-400 block text-[10px]">DIRECT LABOR</span>
-          <span class="text-rose-600 dark:text-rose-400 font-bold">₦ {{ number_format($activePb['metrics']['costs']['labor'] ?? 24400) }}</span>
+          <span class="text-rose-600 dark:text-rose-400 font-bold">₦ {{ number_format($activePb['metrics']['costs']['labor'] ?? 0) }}</span>
           <span class="text-slate-400 dark:text-slate-500 block text-[9px]">Farm shifts</span>
         </div>
       </div>
@@ -269,7 +276,7 @@
               <span class="text-slate-700 dark:text-slate-300">Feed (Starter + Grower + Finisher)</span>
             </div>
             <span class="text-slate-900 dark:text-white font-bold">
-              ₦ {{ number_format(($activePb['metrics']['costs']['feed'] ?? 674500) / max(1, $activePb['metrics']['current_in_house_birds'] ?? 1825), 2) }}
+              ₦ {{ number_format(!empty($activePb['metrics']['current_in_house_birds']) ? (($activePb['metrics']['costs']['feed'] ?? 0) / $activePb['metrics']['current_in_house_birds']) : 0, 2) }}
             </span>
           </div>
 
@@ -279,7 +286,7 @@
               <span class="text-slate-700 dark:text-slate-300">Incubator Carryover (Egg + Gas)</span>
             </div>
             <span class="text-slate-900 dark:text-white font-bold">
-              ₦ {{ number_format(($activePb['metrics']['costs']['initial_chicks'] ?? 879850) / max(1, $activePb['metrics']['current_in_house_birds'] ?? 1825), 2) }}
+              ₦ {{ number_format(!empty($activePb['metrics']['current_in_house_birds']) ? (($activePb['metrics']['costs']['initial_chicks'] ?? 0) / $activePb['metrics']['current_in_house_birds']) : 0, 2) }}
             </span>
           </div>
 
@@ -289,7 +296,7 @@
               <span class="text-slate-700 dark:text-slate-300">House Rent Lump-Sum</span>
             </div>
             <span class="text-slate-900 dark:text-white font-bold">
-              ₦ {{ number_format(($activePb['fixed_house_rent'] ?? 250000) / max(1, $activePb['metrics']['current_in_house_birds'] ?? 1825), 2) }}
+              ₦ {{ number_format(!empty($activePb['metrics']['current_in_house_birds']) ? (($activePb['fixed_house_rent'] ?? 0) / $activePb['metrics']['current_in_house_birds']) : 0, 2) }}
             </span>
           </div>
 
@@ -299,7 +306,7 @@
               <span class="text-slate-700 dark:text-slate-300">Medications, Vaccine & Sanitation</span>
             </div>
             <span class="text-slate-900 dark:text-white font-bold">
-              ₦ {{ number_format((($activePb['metrics']['costs']['medication'] ?? 28000) + ($activePb['metrics']['costs']['sanitation'] ?? 9500)) / max(1, $activePb['metrics']['current_in_house_birds'] ?? 1825), 2) }}
+              ₦ {{ number_format(!empty($activePb['metrics']['current_in_house_birds']) ? ((($activePb['metrics']['costs']['medication'] ?? 0) + ($activePb['metrics']['costs']['sanitation'] ?? 0)) / $activePb['metrics']['current_in_house_birds']) : 0, 2) }}
             </span>
           </div>
 
@@ -309,7 +316,7 @@
               <span class="text-slate-700 dark:text-slate-300">Direct Farm Labor Allocation</span>
             </div>
             <span class="text-slate-900 dark:text-white font-bold">
-              ₦ {{ number_format(($activePb['metrics']['costs']['labor'] ?? 24400) / max(1, $activePb['metrics']['current_in_house_birds'] ?? 1825), 2) }}
+              ₦ {{ number_format(!empty($activePb['metrics']['current_in_house_birds']) ? (($activePb['metrics']['costs']['labor'] ?? 0) / $activePb['metrics']['current_in_house_birds']) : 0, 2) }}
             </span>
           </div>
         </div>
@@ -342,40 +349,43 @@
     <div class="glass-card rounded-3xl p-6">
       <div class="flex items-center justify-between mb-1">
         <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-          <i class="fa-solid fa-temperature-full text-amber-500"></i> Setter Batch #{{ $activeIb['batch_code'] ?? 'INC-2026-03' }}
+          <i class="fa-solid fa-temperature-full text-amber-500"></i> Setter Batch #{{ $activeIb['batch_code'] ?? 'None' }}
         </h3>
         <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-          {{ $activeIb['status'] ?? 'Active' }}
+          {{ $activeIb['status'] ?? 'No Batch' }}
         </span>
       </div>
       <p class="text-xs text-slate-500 dark:text-slate-400 mb-4">
-        Parent: {{ $activeIb['parent_flock_info'] ?? 'ISA Brown Layer Breeders' }} (Age: {{ $activeIb['flock_age_weeks'] ?? 35 }} Wks)
+        Parent: {{ $activeIb['parent_flock_info'] ?? '—' }} (Age: {{ $activeIb['flock_age_weeks'] ?? 0 }} Wks)
       </p>
 
       <div class="space-y-4 font-mono text-xs">
         <div class="flex justify-between items-center py-2 border-b border-slate-200 dark:border-slate-800">
           <span class="text-slate-500 dark:text-slate-400">Eggs Set at Intake:</span>
-          <span class="font-bold text-slate-900 dark:text-white">{{ number_format($activeIb['eggs_set'] ?? 2000) }} pcs</span>
+          <span class="font-bold text-slate-900 dark:text-white">{{ number_format($activeIb['eggs_set'] ?? 0) }} pcs</span>
         </div>
         <div class="flex justify-between items-center py-2 border-b border-slate-200 dark:border-slate-800">
           <span class="text-slate-500 dark:text-slate-400">Total Egg Initial Cost:</span>
-          <span class="font-bold text-amber-600 dark:text-amber-300">₦ {{ number_format($activeIb['egg_cost'] ?? 520000, 2) }}</span>
+          <span class="font-bold text-amber-600 dark:text-amber-300">₦ {{ number_format($activeIb['egg_cost'] ?? 0, 2) }}</span>
         </div>
         <div class="flex justify-between items-center py-2 border-b border-slate-200 dark:border-slate-800">
           <span class="text-slate-500 dark:text-slate-400">Gas Refills Logged (kg):</span>
           <span class="font-bold text-cyan-600 dark:text-cyan-400">
-            {{ number_format($activeIb['metrics']['total_gas_kg'] ?? 45, 1) }} kg (₦ {{ number_format($activeIb['metrics']['total_gas_cost'] ?? 54000, 2) }})
+            {{ number_format($activeIb['metrics']['total_gas_kg'] ?? 0, 1) }} kg (₦ {{ number_format($activeIb['metrics']['total_gas_cost'] ?? 0, 2) }})
           </span>
         </div>
         <div class="flex justify-between items-center py-2 border-b border-slate-200 dark:border-slate-800">
           <span class="text-slate-500 dark:text-slate-400">Incubator Part Repairs:</span>
           <span class="font-bold text-slate-800 dark:text-slate-200">
-            ₦ {{ number_format($activeIb['metrics']['total_repairs_cost'] ?? 15000, 2) }}
+            ₦ {{ number_format($activeIb['metrics']['total_repairs_cost'] ?? 0, 2) }}
           </span>
         </div>
         <div class="flex justify-between items-center py-2 border-b border-slate-200 dark:border-slate-800">
           <span class="text-slate-500 dark:text-slate-400">Incubation Day:</span>
           <span class="font-bold text-emerald-600 dark:text-emerald-400">
+            Day {{ $activeIb['incubation_day'] ?? 0 }} {{ $activeIb ? '(Thermal Setter)' : '' }}
+          </span>
+        </div>
             Day {{ $activeIb['incubation_day'] ?? 12 }} (Thermal Setter)
           </span>
         </div>
@@ -425,7 +435,7 @@
               </tr>
             </thead>
             <tbody id="candlingTableBody" class="divide-y divide-slate-200 dark:divide-slate-800/60">
-              @foreach ($incubationBatches as $ib)
+              @forelse ($incubationBatches as $ib)
                 <tr>
                   <td class="py-2.5 px-3 text-slate-900 dark:text-white font-semibold">{{ $ib['batch_code'] }}</td>
                   <td class="py-2.5 px-3 font-bold">{{ number_format($ib['eggs_set']) }}</td>
@@ -441,7 +451,13 @@
                     </span>
                   </td>
                 </tr>
-              @endforeach
+              @empty
+                <tr>
+                  <td colspan="7" class="py-6 text-center text-slate-400 dark:text-slate-500 font-sans text-xs">
+                    No incubation batches recorded yet. <a href="/?page=incubation" class="text-emerald-500 font-bold hover:underline">Add First Batch →</a>
+                  </td>
+                </tr>
+              @endforelse
             </tbody>
           </table>
         </div>
@@ -474,12 +490,16 @@
         </span>
         <h3 class="text-base font-bold text-slate-900 dark:text-white mt-2 flex items-center gap-2">
           <i class="fa-solid fa-bell text-amber-500 animate-bounce"></i> 
-          {{ $activePb['feed_alert']['needs_transition'] ? 'Transition to ' . $activePb['feed_alert']['recommended_stage'] : 'Feeding Stage on Target' }}
+          {{ ($activePb['feed_alert']['needs_transition'] ?? false) ? 'Transition to ' . $activePb['feed_alert']['recommended_stage'] : 'Feeding Stage on Target' }}
         </h3>
         <p class="text-xs text-slate-600 dark:text-slate-400 mt-1">
-          Batch #{{ $activePb['batch_code'] ?? 'PRD-2026-01' }} is at <strong>Day {{ $activePb['age_days'] ?? 31 }}</strong>. 
-          Current ration: <strong>{{ $activePb['current_feed_stage'] ?? 'Grower' }}</strong>. 
-          Target harvest: Day 42.
+          @if ($activePb)
+            Batch #{{ $activePb['batch_code'] }} is at <strong>Day {{ $activePb['age_days'] }}</strong>. 
+            Current ration: <strong>{{ $activePb['current_feed_stage'] }}</strong>. 
+            Target harvest: Day 42.
+          @else
+            No active broiler flocks currently in pen.
+          @endif
         </p>
       </div>
 
@@ -487,14 +507,16 @@
       <div class="p-4 rounded-2xl bg-slate-100/90 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-3 font-mono text-xs">
         <span class="text-slate-700 dark:text-slate-300 font-bold block border-b border-slate-200 dark:border-slate-800 pb-2">Unit Cost Engine (Per Gram / ml)</span>
         
-        @foreach ($inventoryItems as $item)
+        @forelse ($inventoryItems as $item)
           <div class="flex justify-between items-center text-slate-600 dark:text-slate-400">
             <span>{{ $item['item_name'] ?? $item['name'] ?? '' }}:</span>
             <span class="text-emerald-700 dark:text-emerald-300 font-bold">
               ₦ {{ number_format((float) ($item['unit_cost_per_g_or_ml'] ?? $item['cost_per_base_unit'] ?? 0), 3) }} / {{ $item['unit_label'] ?? $item['base_unit'] ?? 'g' }}
             </span>
           </div>
-        @endforeach
+        @empty
+          <p class="text-slate-400 dark:text-slate-500 text-xs font-sans">No inventory items recorded yet.</p>
+        @endforelse
       </div>
 
       <!-- Facility Rent Allocation Spec -->
@@ -503,7 +525,11 @@
           <i class="fa-solid fa-house-chimney"></i> Lump-Sum Rent Allocation
         </div>
         <p class="text-slate-600 dark:text-slate-400 text-[11px] font-mono leading-relaxed">
-          {{ $activePb['house_pen_id'] ?? 'Barn 01' }} lump-sum house rent of <strong>₦ {{ number_format($activePb['fixed_house_rent'] ?? 250000) }}</strong> is allocated directly to this batch. Zero daily manual rent logging needed.
+          @if ($activePb)
+            {{ $activePb['house_pen_id'] ?? 'Barn 01' }} lump-sum house rent of <strong>₦ {{ number_format($activePb['fixed_house_rent'] ?? 0) }}</strong> is allocated directly to this batch. Zero daily manual rent logging needed.
+          @else
+            No barn house rent currently allocated.
+          @endif
         </p>
       </div>
     </div>
@@ -562,12 +588,9 @@
                 @endforeach
               @else
                 <tr>
-                  <td class="py-2.5 px-3 text-slate-900 dark:text-white font-semibold">Day 31 • Today</td>
-                  <td class="py-2.5 px-3 text-rose-600 dark:text-rose-400 font-bold">-4 birds</td>
-                  <td class="py-2.5 px-3">655,000 g (Grower)</td>
-                  <td class="py-2.5 px-3 text-emerald-700 dark:text-emerald-300 font-semibold">₦ 294,750</td>
-                  <td class="py-2.5 px-3 text-slate-500">1,150 L Clean Water</td>
-                  <td class="py-2.5 px-3">₦ 16,500</td>
+                  <td colspan="6" class="py-6 text-center text-slate-400 dark:text-slate-500 font-sans text-xs">
+                    No daily telemetry logs recorded yet. Click <strong>"Log Today's Entry"</strong> above to record your first daily log.
+                  </td>
                 </tr>
               @endif
             </tbody>
@@ -640,14 +663,14 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-200 dark:divide-slate-800/60">
-          @foreach ($inventoryItems as $item)
+          @forelse ($inventoryItems as $item)
             <tr>
               <td class="py-3 px-3 text-slate-900 dark:text-white font-semibold">
                 {{ $item['item_name'] ?? $item['name'] ?? '' }}
               </td>
               <td class="py-3 px-3">
-                <span class="px-2 py-0.5 rounded text-[10px] font-bold {{ strtolower($item['category']) === 'feed' ? 'bg-amber-500/20 text-amber-300' : 'bg-cyan-500/20 text-cyan-300' }}">
-                  {{ ucfirst($item['category']) }}
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold {{ strtolower($item['category'] ?? '') === 'feed' ? 'bg-amber-500/20 text-amber-300' : 'bg-cyan-500/20 text-cyan-300' }}">
+                  {{ ucfirst($item['category'] ?? '') }}
                 </span>
               </td>
               <td class="py-3 px-3">{{ number_format((float) ($item['remaining_bulk'] ?? $item['package_size_qty'] ?? 0), 1) }} {{ $item['bulk_unit_label'] ?? $item['package_unit'] ?? '' }}</td>
@@ -666,7 +689,13 @@
                 @endif
               </td>
             </tr>
-          @endforeach
+          @empty
+            <tr>
+              <td colspan="7" class="py-6 text-center text-slate-400 dark:text-slate-500 font-sans text-xs">
+                No inventory items in stock. Click <strong>"+ Add Bulk Purchase"</strong> above to record your first purchase.
+              </td>
+            </tr>
+          @endforelse
         </tbody>
       </table>
     </div>

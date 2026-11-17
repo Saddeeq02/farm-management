@@ -228,18 +228,60 @@
                 <div class="px-6 py-4 bg-slate-100/85 dark:bg-slate-900/50 border-b border-slate-200/80 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-4">
                     <div class="flex flex-wrap items-center gap-3">
                         <span class="text-base font-mono font-bold text-slate-900 dark:text-white">{{ $ib['batch_code'] }}</span>
+                        @if (!empty($ib['is_client_service']))
+                            <span class="text-[11px] font-mono px-2.5 py-0.5 rounded-full font-bold bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30">
+                                CLIENT SERVICE • {{ $ib['client_name'] ?: 'Customer' }}
+                            </span>
+                        @endif
                         <span class="text-[11px] font-mono px-2.5 py-0.5 rounded-full font-bold bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30">
                             {{ $ib['species_label'] ?? 'Chicken' }} • Day {{ $ib['incubation_day'] }}/{{ $ib['total_days'] ?? 21 }} ({{ $ib['current_stage'] ?? 'Setter' }})
                         </span>
-                        <span class="text-xs px-2.5 py-0.5 rounded-full font-semibold {{ $ib['status'] === 'Completed' ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30' : ($ib['status'] === 'Moved to Production' ? 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30' : 'bg-cyan-500/15 text-cyan-800 dark:text-cyan-300 border border-cyan-500/30') }}">
+                        <span class="text-xs px-2.5 py-0.5 rounded-full font-semibold {{ $ib['status'] === 'Completed' ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30' : ($ib['status'] === 'Moved to Production' || $ib['status'] === 'Collected' ? 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30' : 'bg-cyan-500/15 text-cyan-800 dark:text-cyan-300 border border-cyan-500/30') }}">
                             {{ $ib['status'] }}
                         </span>
-                        <span class="text-xs text-slate-600 dark:text-slate-300">{{ $ib['parent_flock_info'] }} ({{ $ib['flock_age_weeks'] ?? 34 }} wks) • {{ $ib['setter_id'] ?? 'Setter A' }} • Set {{ $ib['start_date'] }}</span>
+                        <span class="text-xs text-slate-600 dark:text-slate-300">
+                            {{ $ib['parent_flock_info'] }}
+                            @if (!empty($ib['client_phone']))
+                                • <a href="tel:{{ $ib['client_phone'] }}" class="font-mono text-cyan-600 dark:text-cyan-400 hover:underline">{{ $ib['client_phone'] }}</a>
+                            @endif
+                            • {{ $ib['setter_id'] ?? 'Setter A' }} • Set {{ $ib['start_date'] }}
+                        </span>
                     </div>
 
-                    <!-- One-Click UI Transition ("Push to Production") -->
-                    <div class="flex items-center gap-3">
-                        @if ($ib['linked_production_batch'])
+                    <!-- One-Click UI Transition ("Push to Production" or "Client Collection") -->
+                    <div class="flex flex-wrap items-center gap-2">
+                        @if (!empty($ib['is_client_service']))
+                            <span class="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200">
+                                Fee: <strong>₦{{ number_format($ib['service_fee'], 0) }}</strong> • Paid: <strong class="text-emerald-600 dark:text-emerald-400">₦{{ number_format($ib['amount_paid'], 0) }}</strong>
+                                @if ($ib['balance_due'] > 0)
+                                    • Due: <strong class="text-rose-600 dark:text-rose-400">₦{{ number_format($ib['balance_due'], 0) }}</strong>
+                                @endif
+                            </span>
+                            @if ($ib['balance_due'] > 0)
+                                <form method="POST" action="/?page=incubation" class="inline-flex items-center gap-1">
+                                    <input type="hidden" name="action" value="record_incubation_payment">
+                                    <input type="hidden" name="incubation_batch_id" value="{{ $ib['id'] }}">
+                                    <input type="number" step="0.01" min="1" max="{{ $ib['balance_due'] }}" name="payment_amount" value="{{ $ib['balance_due'] }}" required
+                                           class="w-24 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1 text-[11px] font-mono text-slate-900 dark:text-white">
+                                    <button type="submit" class="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-[11px] font-bold cursor-pointer">
+                                        Collect Fee
+                                    </button>
+                                </form>
+                            @endif
+                            @if ($ib['status'] !== 'Collected')
+                                <form method="POST" action="/?page=incubation" class="inline">
+                                    <input type="hidden" name="action" value="mark_incubation_collected">
+                                    <input type="hidden" name="incubation_batch_id" value="{{ $ib['id'] }}">
+                                    <button type="submit" class="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold shadow-sm cursor-pointer">
+                                        ✓ Mark Chicks Collected
+                                    </button>
+                                </form>
+                            @else
+                                <span class="px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/35 text-emerald-700 dark:text-emerald-300 text-xs font-semibold">
+                                    ✓ Collected ({{ $ib['collected_date'] ?? 'Done' }})
+                                </span>
+                            @endif
+                        @elseif ($ib['linked_production_batch'])
                             <a href="/?page=production" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/35 text-emerald-800 dark:text-emerald-300 text-xs font-semibold hover:bg-emerald-500/25 transition">
                                 ✓ Linked to {{ $ib['linked_production_batch']['batch_code'] }} ({{ number_format((int)$ib['linked_production_batch']['initial_bird_count']) }} chicks)
                             </a>
@@ -430,15 +472,52 @@
                 Setter (18d): 37.5–37.8°C • 55–60% RH | Transfer Day 18 → Hatcher (3d): 70–75% RH
             </div>
 
+            <div>
+                <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Egg Ownership</label>
+                <select name="ownership_type" id="incOwnershipType" onchange="toggleClientHatchFields(this.value)"
+                        class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs font-semibold focus:border-emerald-500 focus:outline-none">
+                    <option value="Farm">Farm Owned (Move to Production after Hatch)</option>
+                    <option value="Client">Client Hatching Service (Customer Collects Chicks)</option>
+                </select>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Customer / Supplier Name</label>
+                    <input type="text" name="client_name" id="incClientName" placeholder="Person who brought the eggs"
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs focus:border-emerald-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Customer Phone Number</label>
+                    <input type="text" name="client_phone" id="incClientPhone" placeholder="e.g. 0803..."
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-emerald-500 focus:outline-none">
+                </div>
+            </div>
+
+            <div id="clientHatchFields" class="hidden space-y-2.5 p-3 rounded-2xl bg-purple-500/10 border border-purple-500/30">
+                <div class="grid grid-cols-2 gap-2.5">
+                    <div>
+                        <label class="block text-[11px] font-medium text-purple-700 dark:text-purple-300 mb-1">Hatching Service Fee (₦)</label>
+                        <input type="number" step="0.01" min="0" name="service_fee" id="incServiceFee" placeholder="50000"
+                               class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-1.5 text-xs font-mono focus:border-purple-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-medium text-purple-700 dark:text-purple-300 mb-1">Amount Paid Upfront (₦)</label>
+                        <input type="number" step="0.01" min="0" name="amount_paid" placeholder="50000"
+                               class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-1.5 text-xs font-mono focus:border-purple-500 focus:outline-none">
+                    </div>
+                </div>
+            </div>
+
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Number of Eggs</label>
                     <input type="number" name="eggs_set" placeholder="2500" min="1" required
                            class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-emerald-500 focus:outline-none">
                 </div>
-                <div>
+                <div id="farmEggPriceWrapper">
                     <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Egg Price (₦)</label>
-                    <input type="number" step="0.01" name="egg_cost" placeholder="625000" min="0" required
+                    <input type="number" step="0.01" name="egg_cost" id="incEggCostInput" placeholder="625000" min="0" value="0" required
                            class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-emerald-500 focus:outline-none">
                 </div>
             </div>
@@ -485,6 +564,23 @@ function toggleGasWeightField(expenseType) {
         wrapper.classList.remove('hidden');
     } else {
         wrapper.classList.add('hidden');
+    }
+}
+
+function toggleClientHatchFields(ownership) {
+    const clientBox = document.getElementById('clientHatchFields');
+    const eggPriceWrap = document.getElementById('farmEggPriceWrapper');
+    const eggCostInput = document.getElementById('incEggCostInput');
+    const clientNameInput = document.getElementById('incClientName');
+    const clientPhoneInput = document.getElementById('incClientPhone');
+    const isClient = ownership === 'Client';
+    if (clientBox) clientBox.classList.toggle('hidden', !isClient);
+    if (eggPriceWrap) eggPriceWrap.classList.toggle('hidden', isClient);
+    if (clientNameInput) clientNameInput.required = isClient;
+    if (clientPhoneInput) clientPhoneInput.required = isClient;
+    if (eggCostInput) {
+        eggCostInput.required = !isClient;
+        if (isClient) eggCostInput.value = '0';
     }
 }
 </script>
