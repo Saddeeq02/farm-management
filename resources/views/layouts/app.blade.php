@@ -343,38 +343,11 @@
           @endforeach
         </div>
 
-        <div class="pt-4 mt-4 border-t border-slate-200/70 dark:border-slate-800/70 px-2 space-y-2.5">
-          <div class="rounded-xl bg-emerald-500/10 border border-emerald-500/25 p-3 text-[11px]">
-            <div class="flex items-center gap-1.5 font-bold text-emerald-700 dark:text-emerald-300">
-              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>Dr. Kosiella Protocols</span>
-            </div>
-            <p class="text-[10px] text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
-              Live cost-per-bird & clinical reminders synced across all modules.
-            </p>
-          </div>
-          <button type="button" id="pwaInstallBtn" onclick="triggerPwaInstall()" class="hidden w-full mb-2 flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-emerald-500/40 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-300 text-[11px] font-mono font-bold transition-all cursor-pointer">
-            <i class="fa-solid fa-mobile-screen-button"></i>
-            <span>Install Phone App</span>
-          </button>
-          <a href="/?action=download_backup" class="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-900/70 hover:bg-emerald-500/15 hover:border-emerald-500/40 text-slate-700 dark:text-slate-200 text-[11px] font-mono font-semibold transition-all">
-            <i class="fa-solid fa-download text-emerald-500"></i>
-            <span>1-Click Data Backup</span>
+        <div class="pt-4 mt-4 border-t border-slate-200/70 dark:border-slate-800/70 px-2">
+          <a href="/?action=logout" class="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-300 text-xs font-mono font-semibold transition-all">
+            <i class="fa-solid fa-right-from-bracket"></i>
+            <span>Sign Out</span>
           </a>
-          <div class="grid grid-cols-2 gap-2 mt-2">
-            <button type="button" onclick="openModal('changePasswordModal')" class="flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-900/70 hover:bg-slate-200/70 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-[11px] font-mono font-semibold transition-all cursor-pointer">
-              <i class="fa-solid fa-key text-amber-500"></i>
-              <span>Password</span>
-            </button>
-            <a href="/?action=logout" class="flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-xl border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-300 text-[11px] font-mono font-semibold transition-all">
-              <i class="fa-solid fa-right-from-bracket"></i>
-              <span>Sign Out</span>
-            </a>
-          </div>
-          <button type="button" onclick="openModal('clearFarmDataModal')" class="w-full mt-2 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-500/25 bg-rose-500/5 hover:bg-rose-500/15 text-rose-600 dark:text-rose-400 text-[10px] font-mono font-semibold transition-all cursor-pointer">
-            <i class="fa-solid fa-trash-can"></i>
-            <span>Clear All Farm Data</span>
-          </button>
         </div>
       </aside>
 
