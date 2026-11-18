@@ -13,6 +13,11 @@
 }
 
 /* Ambient Dynamic Agricultural Backdrops - Ultra Clear & Crisp Visibility */
+html, body {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
 html.dark, html.dark body {
   background-color: #04080e;
 }

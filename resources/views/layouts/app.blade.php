@@ -58,8 +58,10 @@
   <div class="bg-grid-overlay"></div>
 
   <!-- Animated Ambient Floating Glow Orbs (Subtle) -->
-  <div class="ambient-orb w-96 h-96 bg-emerald-500/15 top-16 left-12"></div>
-  <div class="ambient-orb w-[26rem] h-[26rem] bg-cyan-500/10 top-72 right-16" style="animation-delay: -5s;"></div>
+  <div class="fixed inset-0 overflow-hidden pointer-events-none z-0">
+    <div class="ambient-orb w-96 h-96 bg-emerald-500/15 top-16 left-12"></div>
+    <div class="ambient-orb w-[26rem] h-[26rem] bg-cyan-500/10 top-72 right-16" style="animation-delay: -5s;"></div>
+  </div>
 
   <!-- MAIN APP CONTAINER -->
   <div class="w-full max-w-full flex-grow flex flex-col relative z-10 overflow-x-clip">
@@ -376,7 +378,7 @@
     @endif
 
     <!-- CONTENT BODY -->
-    <main class="p-4 lg:p-8 pb-24 lg:pb-8 max-w-7xl mx-auto w-full space-y-6">
+    <main class="p-4 lg:p-8 pb-24 lg:pb-8 max-w-7xl mx-auto w-full min-w-0 space-y-6">
       @yield('content')
     </main>
 
@@ -1138,11 +1140,11 @@
       const donutCanvas = document.getElementById('costBreakdownChart');
       if (donutCanvas) {
         const ctxDonut = donutCanvas.getContext('2d');
-        const feedCost = {{ $productionBatches[0]['metrics']['costs']['feed'] ?? 0 }};
-        const incubCost = {{ $productionBatches[0]['metrics']['costs']['initial_chicks'] ?? 0 }};
-        const rentCost = {{ $productionBatches[0]['fixed_house_rent'] ?? 0 }};
-        const medCost = {{ ($productionBatches[0]['metrics']['costs']['medication'] ?? 0) + ($productionBatches[0]['metrics']['costs']['sanitation'] ?? 0) }};
-        const laborCost = {{ $productionBatches[0]['metrics']['costs']['labor'] ?? 0 }};
+        const feedCost = {{ $productionBatches[0]['metrics']['total_feed_cost'] ?? 0 }};
+        const incubCost = {{ $productionBatches[0]['metrics']['incubation_cost'] ?? 0 }};
+        const rentCost = {{ $productionBatches[0]['metrics']['house_rent'] ?? 0 }};
+        const medCost = {{ ($productionBatches[0]['metrics']['total_med_cost'] ?? 0) + ($productionBatches[0]['metrics']['total_sanitation_cost'] ?? 0) }};
+        const laborCost = {{ $productionBatches[0]['metrics']['total_labor_cost'] ?? 0 }};
         const totalCost = feedCost + incubCost + rentCost + medCost + laborCost;
         const hasData = totalCost > 0;
 

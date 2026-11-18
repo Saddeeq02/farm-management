@@ -238,12 +238,12 @@
             <span class="text-[11px] font-mono text-slate-500 dark:text-slate-400">{{ count($productionBatches) }} Active Batch(es)</span>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            @foreach ($productionBatches as $pb)
+            @foreach ($productionBatches as $idx => $pb)
                 @php $m = $pb['metrics']; @endphp
                 <button type="button"
                         id="prodBatchCard-{{ $pb['id'] }}"
                         onclick="selectProductionBatch({{ $pb['id'] }})"
-                        class="prod-batch-card text-left glass-card rounded-2xl p-4 transition-all cursor-pointer hover:scale-[1.01] {{ $loop->first ? 'ring-2 ring-emerald-500 border-emerald-500/60' : 'border-slate-200/80 dark:border-slate-700/70 opacity-90 hover:opacity-100' }}">
+                        class="prod-batch-card text-left glass-card rounded-2xl p-4 transition-all cursor-pointer hover:scale-[1.01] {{ $idx === 0 ? 'ring-2 ring-emerald-500 border-emerald-500/60' : 'border-slate-200/80 dark:border-slate-700/70 opacity-90 hover:opacity-100' }}">
                     <div class="flex items-center justify-between gap-2">
                         <div class="flex items-center gap-2">
                             <span class="text-sm font-mono font-extrabold text-slate-900 dark:text-white">{{ $pb['batch_code'] }}</span>
@@ -280,9 +280,9 @@
 
     <!-- Selected Batch Financial Attribution & Telemetry History -->
     <div id="prodBatchDetailContainer">
-    @forelse ($productionBatches as $pb)
+    @forelse ($productionBatches as $idx => $pb)
         @php $m = $pb['metrics']; @endphp
-        <div id="prodBatchDetail-{{ $pb['id'] }}" class="prod-batch-detail glass-card rounded-2xl overflow-hidden {{ $loop->first ? '' : 'hidden' }}">
+        <div id="prodBatchDetail-{{ $pb['id'] }}" class="prod-batch-detail glass-card rounded-2xl overflow-hidden {{ $idx === 0 ? '' : 'hidden' }}">
             <div class="px-6 py-4 bg-slate-100/70 dark:bg-slate-900/60 border-b border-slate-200/80 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-4">
                 <div>
                     <div class="flex flex-wrap items-center gap-2.5">

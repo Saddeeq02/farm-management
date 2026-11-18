@@ -229,27 +229,27 @@
       <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-4 mt-2 border-t border-slate-200 dark:border-slate-800/80 text-xs font-mono">
         <div class="p-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
           <span class="text-slate-500 dark:text-slate-400 block text-[10px]">FEED INTAKE</span>
-          <span class="text-emerald-600 dark:text-emerald-400 font-bold">₦ {{ number_format($activePb['metrics']['costs']['feed'] ?? 0) }}</span>
+          <span class="text-emerald-600 dark:text-emerald-400 font-bold">₦ {{ number_format($activePb['metrics']['total_feed_cost'] ?? 0) }}</span>
           <span class="text-slate-400 dark:text-slate-500 block text-[9px]">Calculated g/ml</span>
         </div>
         <div class="p-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
           <span class="text-slate-500 dark:text-slate-400 block text-[10px]">INCUB. BASE</span>
-          <span class="text-cyan-600 dark:text-cyan-400 font-bold">₦ {{ number_format($activePb['metrics']['costs']['initial_chicks'] ?? 0) }}</span>
-          <span class="text-slate-400 dark:text-slate-500 block text-[9px]">Eggs + Gas carried</span>
+          <span class="text-cyan-600 dark:text-cyan-400 font-bold">₦ {{ number_format($activePb['metrics']['incubation_cost'] ?? 0) }}</span>
+          <span class="text-slate-400 dark:text-slate-500 block text-[9px]">Eggs + Gas / DOC</span>
         </div>
         <div class="p-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
           <span class="text-slate-500 dark:text-slate-400 block text-[10px]">BARN RENT</span>
-          <span class="text-amber-600 dark:text-amber-400 font-bold">₦ {{ number_format($activePb['fixed_house_rent'] ?? 0) }}</span>
+          <span class="text-amber-600 dark:text-amber-400 font-bold">₦ {{ number_format($activePb['metrics']['house_rent'] ?? 0) }}</span>
           <span class="text-slate-400 dark:text-slate-500 block text-[9px]">Lump-sum cycle</span>
         </div>
         <div class="p-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
           <span class="text-slate-500 dark:text-slate-400 block text-[10px]">VET & SANIT.</span>
-          <span class="text-purple-600 dark:text-purple-400 font-bold">₦ {{ number_format(($activePb['metrics']['costs']['medication'] ?? 0) + ($activePb['metrics']['costs']['sanitation'] ?? 0)) }}</span>
+          <span class="text-purple-600 dark:text-purple-400 font-bold">₦ {{ number_format(($activePb['metrics']['total_med_cost'] ?? 0) + ($activePb['metrics']['total_sanitation_cost'] ?? 0)) }}</span>
           <span class="text-slate-400 dark:text-slate-500 block text-[9px]">Meds & bio-security</span>
         </div>
         <div class="p-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 col-span-2 sm:col-span-1">
           <span class="text-slate-500 dark:text-slate-400 block text-[10px]">DIRECT LABOR</span>
-          <span class="text-rose-600 dark:text-rose-400 font-bold">₦ {{ number_format($activePb['metrics']['costs']['labor'] ?? 0) }}</span>
+          <span class="text-rose-600 dark:text-rose-400 font-bold">₦ {{ number_format($activePb['metrics']['total_labor_cost'] ?? 0) }}</span>
           <span class="text-slate-400 dark:text-slate-500 block text-[9px]">Farm shifts</span>
         </div>
       </div>
@@ -273,17 +273,17 @@
               <span class="text-slate-700 dark:text-slate-300">Feed (Starter + Grower + Finisher)</span>
             </div>
             <span class="text-slate-900 dark:text-white font-bold">
-              ₦ {{ number_format(!empty($activePb['metrics']['current_in_house_birds']) ? (($activePb['metrics']['costs']['feed'] ?? 0) / $activePb['metrics']['current_in_house_birds']) : 0, 2) }}
+              ₦ {{ number_format(!empty($activePb['metrics']['current_in_house_birds']) ? (($activePb['metrics']['total_feed_cost'] ?? 0) / $activePb['metrics']['current_in_house_birds']) : 0, 2) }}
             </span>
           </div>
 
           <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-100/90 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800">
             <div class="flex items-center gap-2">
               <span class="w-2.5 h-2.5 rounded-full bg-cyan-500"></span>
-              <span class="text-slate-700 dark:text-slate-300">Incubator Carryover (Egg + Gas)</span>
+              <span class="text-slate-700 dark:text-slate-300">Incubator Carryover / DOC Base</span>
             </div>
             <span class="text-slate-900 dark:text-white font-bold">
-              ₦ {{ number_format(!empty($activePb['metrics']['current_in_house_birds']) ? (($activePb['metrics']['costs']['initial_chicks'] ?? 0) / $activePb['metrics']['current_in_house_birds']) : 0, 2) }}
+              ₦ {{ number_format(!empty($activePb['metrics']['current_in_house_birds']) ? (($activePb['metrics']['incubation_cost'] ?? 0) / $activePb['metrics']['current_in_house_birds']) : 0, 2) }}
             </span>
           </div>
 
@@ -293,7 +293,7 @@
               <span class="text-slate-700 dark:text-slate-300">House Rent Lump-Sum</span>
             </div>
             <span class="text-slate-900 dark:text-white font-bold">
-              ₦ {{ number_format(!empty($activePb['metrics']['current_in_house_birds']) ? (($activePb['fixed_house_rent'] ?? 0) / $activePb['metrics']['current_in_house_birds']) : 0, 2) }}
+              ₦ {{ number_format(!empty($activePb['metrics']['current_in_house_birds']) ? (($activePb['metrics']['house_rent'] ?? 0) / $activePb['metrics']['current_in_house_birds']) : 0, 2) }}
             </span>
           </div>
 
@@ -303,7 +303,7 @@
               <span class="text-slate-700 dark:text-slate-300">Medications, Vaccine & Sanitation</span>
             </div>
             <span class="text-slate-900 dark:text-white font-bold">
-              ₦ {{ number_format(!empty($activePb['metrics']['current_in_house_birds']) ? ((($activePb['metrics']['costs']['medication'] ?? 0) + ($activePb['metrics']['costs']['sanitation'] ?? 0)) / $activePb['metrics']['current_in_house_birds']) : 0, 2) }}
+              ₦ {{ number_format(!empty($activePb['metrics']['current_in_house_birds']) ? ((($activePb['metrics']['total_med_cost'] ?? 0) + ($activePb['metrics']['total_sanitation_cost'] ?? 0)) / $activePb['metrics']['current_in_house_birds']) : 0, 2) }}
             </span>
           </div>
 
@@ -313,7 +313,7 @@
               <span class="text-slate-700 dark:text-slate-300">Direct Farm Labor Allocation</span>
             </div>
             <span class="text-slate-900 dark:text-white font-bold">
-              ₦ {{ number_format(!empty($activePb['metrics']['current_in_house_birds']) ? (($activePb['metrics']['costs']['labor'] ?? 0) / $activePb['metrics']['current_in_house_birds']) : 0, 2) }}
+              ₦ {{ number_format(!empty($activePb['metrics']['current_in_house_birds']) ? (($activePb['metrics']['total_labor_cost'] ?? 0) / $activePb['metrics']['current_in_house_birds']) : 0, 2) }}
             </span>
           </div>
         </div>
