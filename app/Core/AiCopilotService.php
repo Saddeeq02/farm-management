@@ -74,7 +74,10 @@ class AiCopilotService
 
         // Check if backend environment or store has a Gemini key; otherwise use the built-in Farm & Veterinary AI Engine
         $apiKey = (string) (getenv('GEMINI_API_KEY') ?: $this->farm->getDatabase()->getSetting('gemini_api_key', '') ?: '');
-        $model = (string) ($this->farm->getDatabase()->getSetting('gemini_model', 'gemini-3.8-flash') ?: 'gemini-3.8-flash');
+        $model = (string) ($this->farm->getDatabase()->getSetting('gemini_model', 'gemini-2.5-flash') ?: 'gemini-2.5-flash');
+        if ($model === 'gemini-3.8-flash') {
+            $model = 'gemini-2.5-flash';
+        }
 
         if ($apiKey !== '') {
             $geminiReply = $this->callGeminiInteractionsApi($apiKey, $model, $question, $systemSnapshot);
@@ -793,10 +796,17 @@ class AiCopilotService
 
         // Default concise, helpful reply
         $medNames = array_map(fn($m) => "**{$m['item_name']}**", $uploadedMeds);
+        $flockSummaries = [];
+        foreach ($prodBatches as $pb) {
+            $pm = $pb['metrics'] ?? [];
+            $flockSummaries[] = "`{$pb['batch_code']}` {$pb['flock_type']} (" . number_format((int) ($pm['current_in_house_birds'] ?? 0)) . " birds @ **₦" . number_format((float) ($pm['cost_per_bird'] ?? 0), 2) . "/bird**)";
+        }
+        $flocksLine = !empty($flockSummaries) ? implode(', ', $flockSummaries) : 'No active flocks yet';
+
         return "Here is your quick farm & veterinary pulse:\n"
-            . "- **Active Flocks:** **" . number_format($summary['total_live_birds']) . " live birds** in house (`PRD-2026-01` @ **₦" . number_format($prodBatches[1]['metrics']['cost_per_bird'] ?? $prodBatches[0]['metrics']['cost_per_bird'], 2) . "/bird**, `PRD-2026-02` @ **₦" . number_format($prodBatches[0]['metrics']['cost_per_bird'], 2) . "/bird**).\n"
+            . "- **Active Flocks:** **" . number_format($summary['total_live_birds']) . " live birds** — {$flocksLine}.\n"
             . "- **Uploaded Medications Ready for Advice:** " . (!empty($medNames) ? implode(', ', $medNames) : 'None yet') . ".\n"
-            . "- **Feed & Hatchery:** **" . number_format($summary['total_feed_kg_remaining'], 0) . " kg** of feed in stock and **" . number_format($summary['active_eggs_in_incubator']) . " viable eggs** incubating.\n\n"
+            . "- **Feed & Hatchery:** **" . number_format($summary['total_feed_kg_remaining'], 1) . " kg** of feed in stock and **" . number_format($summary['active_eggs_in_incubator']) . " viable eggs** incubating.\n\n"
             . "Ask me about any medication name, flock symptom (like coughing or diarrhea), or batch pricing!";
     }
 }

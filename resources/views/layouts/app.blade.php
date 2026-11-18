@@ -1140,11 +1140,22 @@
       const donutCanvas = document.getElementById('costBreakdownChart');
       if (donutCanvas) {
         const ctxDonut = donutCanvas.getContext('2d');
-        const feedCost = {{ $productionBatches[0]['metrics']['total_feed_cost'] ?? 0 }};
-        const incubCost = {{ $productionBatches[0]['metrics']['incubation_cost'] ?? 0 }};
-        const rentCost = {{ $productionBatches[0]['metrics']['house_rent'] ?? 0 }};
-        const medCost = {{ ($productionBatches[0]['metrics']['total_med_cost'] ?? 0) + ($productionBatches[0]['metrics']['total_sanitation_cost'] ?? 0) }};
-        const laborCost = {{ $productionBatches[0]['metrics']['total_labor_cost'] ?? 0 }};
+        @php
+          $chartAllFeed = 0.0; $chartAllIncub = 0.0; $chartAllRent = 0.0; $chartAllMed = 0.0; $chartAllLabor = 0.0;
+          foreach (($productionBatches ?? []) as $_pb) {
+              $_m = $_pb['metrics'] ?? [];
+              $chartAllFeed  += (float) ($_m['total_feed_cost'] ?? 0);
+              $chartAllIncub += (float) ($_m['incubation_cost'] ?? 0);
+              $chartAllRent  += (float) ($_m['house_rent'] ?? 0);
+              $chartAllMed   += (float) ($_m['total_med_cost'] ?? 0) + (float) ($_m['total_sanitation_cost'] ?? 0);
+              $chartAllLabor += (float) ($_m['total_labor_cost'] ?? 0);
+          }
+        @endphp
+        const feedCost = {{ round($chartAllFeed, 2) }};
+        const incubCost = {{ round($chartAllIncub, 2) }};
+        const rentCost = {{ round($chartAllRent, 2) }};
+        const medCost = {{ round($chartAllMed, 2) }};
+        const laborCost = {{ round($chartAllLabor, 2) }};
         const totalCost = feedCost + incubCost + rentCost + medCost + laborCost;
         const hasData = totalCost > 0;
 

@@ -14,6 +14,51 @@
     $recPrice = $activePb ? ($activePb['metrics']['recommended_selling_price'] ?? 0) : 0;
     $marginPct = $activePb ? ($activePb['target_profit_margin_pct'] ?? $activePb['metrics']['target_margin_pct'] ?? 35) : 35;
     $projectedProfit = $activePb ? ($activePb['metrics']['projected_net_profit'] ?? 0) : 0;
+
+    // Complete Stock (All Flocks Combined) + Per-Batch Filter Map
+    $allStock = [
+        'label' => 'All Flocks (Complete Stock)',
+        'birds' => 0,
+        'feed' => 0.0,
+        'incub' => 0.0,
+        'rent' => 0.0,
+        'vet' => 0.0,
+        'labor' => 0.0,
+        'total' => 0.0,
+    ];
+    $stockFilterMap = [];
+    foreach ($productionBatches as $pbItem) {
+        $pm = $pbItem['metrics'];
+        $bBirds = (int) ($pm['current_in_house_birds'] ?? 0);
+        $bFeed  = (float) ($pm['total_feed_cost'] ?? 0);
+        $bIncub = (float) ($pm['incubation_cost'] ?? 0);
+        $bRent  = (float) ($pm['house_rent'] ?? 0);
+        $bVet   = (float) ($pm['total_med_cost'] ?? 0) + (float) ($pm['total_sanitation_cost'] ?? 0);
+        $bLabor = (float) ($pm['total_labor_cost'] ?? 0);
+        $bTotal = (float) ($pm['total_accumulated_cost'] ?? ($bFeed + $bIncub + $bRent + $bVet + $bLabor));
+
+        $allStock['birds'] += $bBirds;
+        $allStock['feed']  += $bFeed;
+        $allStock['incub'] += $bIncub;
+        $allStock['rent']  += $bRent;
+        $allStock['vet']   += $bVet;
+        $allStock['labor'] += $bLabor;
+        $allStock['total'] += $bTotal;
+
+        $stockFilterMap[$pbItem['batch_code']] = [
+            'label' => $pbItem['batch_code'] . ' • ' . $pbItem['flock_type'],
+            'birds' => $bBirds,
+            'feed'  => round($bFeed, 2),
+            'incub' => round($bIncub, 2),
+            'rent'  => round($bRent, 2),
+            'vet'   => round($bVet, 2),
+            'labor' => round($bLabor, 2),
+            'total' => round($bTotal, 2),
+        ];
+    }
+    $stockFilterMap = ['ALL' => array_map(fn($v) => is_float($v) ? round($v, 2) : $v, $allStock)] + $stockFilterMap;
+    $allDiv = max(1, $allStock['birds']);
+    $allBreakeven = $allStock['birds'] > 0 ? ($allStock['total'] / $allDiv) : 0;
 @endphp
 
 <!-- 1. BATCH CONTEXT BAR -->
@@ -214,9 +259,17 @@
           </h3>
           <p class="text-xs text-slate-500 dark:text-slate-400">Total accumulated operational outlay distributed across active live inventory</p>
         </div>
-        <div class="flex items-center gap-2 text-xs font-mono bg-white/80 dark:bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span class="text-slate-500 dark:text-slate-400">Live Flock:</span>
-          <span class="text-emerald-600 dark:text-emerald-400 font-bold">{{ number_format($liveBirds) }} birds surviving</span>
+        <div class="flex flex-wrap items-center gap-2">
+          <select id="dashboardStockFilter" onchange="filterDashboardStock(this.value)" class="text-xs font-mono bg-white/90 dark:bg-slate-900/90 text-slate-800 dark:text-emerald-300 font-semibold px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 shadow-sm outline-none focus:border-emerald-500 cursor-pointer">
+            <option value="ALL">All Flocks (Complete Stock)</option>
+            @foreach ($productionBatches as $pbOpt)
+              <option value="{{ $pbOpt['batch_code'] }}">{{ $pbOpt['batch_code'] }} • {{ $pbOpt['flock_type'] }} ({{ number_format($pbOpt['metrics']['current_in_house_birds'] ?? 0) }})</option>
+            @endforeach
+          </select>
+          <div class="flex items-center gap-2 text-xs font-mono bg-white/80 dark:bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <span class="text-slate-500 dark:text-slate-400">Live Flock:</span>
+            <span id="chartLiveBirdsCount" class="text-emerald-600 dark:text-emerald-400 font-bold">{{ number_format($allStock['birds']) }} birds surviving</span>
+          </div>
         </div>
       </div>
 
@@ -229,27 +282,27 @@
       <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-4 mt-2 border-t border-slate-200 dark:border-slate-800/80 text-xs font-mono">
         <div class="p-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
           <span class="text-slate-500 dark:text-slate-400 block text-[10px]">FEED INTAKE</span>
-          <span class="text-emerald-600 dark:text-emerald-400 font-bold">₦ {{ number_format($activePb['metrics']['total_feed_cost'] ?? 0) }}</span>
+          <span id="badgeFeedCost" class="text-emerald-600 dark:text-emerald-400 font-bold">₦ {{ number_format($allStock['feed']) }}</span>
           <span class="text-slate-400 dark:text-slate-500 block text-[9px]">Calculated g/ml</span>
         </div>
         <div class="p-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
           <span class="text-slate-500 dark:text-slate-400 block text-[10px]">INCUB. BASE</span>
-          <span class="text-cyan-600 dark:text-cyan-400 font-bold">₦ {{ number_format($activePb['metrics']['incubation_cost'] ?? 0) }}</span>
+          <span id="badgeIncubCost" class="text-cyan-600 dark:text-cyan-400 font-bold">₦ {{ number_format($allStock['incub']) }}</span>
           <span class="text-slate-400 dark:text-slate-500 block text-[9px]">Eggs + Gas / DOC</span>
         </div>
         <div class="p-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
           <span class="text-slate-500 dark:text-slate-400 block text-[10px]">BARN RENT</span>
-          <span class="text-amber-600 dark:text-amber-400 font-bold">₦ {{ number_format($activePb['metrics']['house_rent'] ?? 0) }}</span>
+          <span id="badgeRentCost" class="text-amber-600 dark:text-amber-400 font-bold">₦ {{ number_format($allStock['rent']) }}</span>
           <span class="text-slate-400 dark:text-slate-500 block text-[9px]">Lump-sum cycle</span>
         </div>
         <div class="p-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
           <span class="text-slate-500 dark:text-slate-400 block text-[10px]">VET & SANIT.</span>
-          <span class="text-purple-600 dark:text-purple-400 font-bold">₦ {{ number_format(($activePb['metrics']['total_med_cost'] ?? 0) + ($activePb['metrics']['total_sanitation_cost'] ?? 0)) }}</span>
+          <span id="badgeVetCost" class="text-purple-600 dark:text-purple-400 font-bold">₦ {{ number_format($allStock['vet']) }}</span>
           <span class="text-slate-400 dark:text-slate-500 block text-[9px]">Meds & bio-security</span>
         </div>
         <div class="p-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 col-span-2 sm:col-span-1">
           <span class="text-slate-500 dark:text-slate-400 block text-[10px]">DIRECT LABOR</span>
-          <span class="text-rose-600 dark:text-rose-400 font-bold">₦ {{ number_format($activePb['metrics']['total_labor_cost'] ?? 0) }}</span>
+          <span id="badgeLaborCost" class="text-rose-600 dark:text-rose-400 font-bold">₦ {{ number_format($allStock['labor']) }}</span>
           <span class="text-slate-400 dark:text-slate-500 block text-[9px]">Farm shifts</span>
         </div>
       </div>
@@ -262,7 +315,7 @@
           <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <i class="fa-solid fa-scale-balanced text-cyan-500"></i> Unit Cost Ledger
           </h3>
-          <span class="text-[11px] font-mono bg-cyan-100 dark:bg-cyan-950/70 text-cyan-800 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-800/40 px-2 py-0.5 rounded font-bold">Per-Bird Share</span>
+          <span id="ledgerScopeBadge" class="text-[11px] font-mono bg-cyan-100 dark:bg-cyan-950/70 text-cyan-800 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-800/40 px-2 py-0.5 rounded font-bold">All Flocks</span>
         </div>
         <p class="text-xs text-slate-500 dark:text-slate-400 mb-4">How every gram of feed, milliliter of medicine, and kobo of barn rent divides among survivors:</p>
 
@@ -272,8 +325,8 @@
               <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
               <span class="text-slate-700 dark:text-slate-300">Feed (Starter + Grower + Finisher)</span>
             </div>
-            <span class="text-slate-900 dark:text-white font-bold">
-              ₦ {{ number_format(!empty($activePb['metrics']['current_in_house_birds']) ? (($activePb['metrics']['total_feed_cost'] ?? 0) / $activePb['metrics']['current_in_house_birds']) : 0, 2) }}
+            <span id="ledgerFeedPerBird" class="text-slate-900 dark:text-white font-bold">
+              ₦ {{ number_format($allStock['birds'] > 0 ? ($allStock['feed'] / $allDiv) : 0, 2) }}
             </span>
           </div>
 
@@ -282,8 +335,8 @@
               <span class="w-2.5 h-2.5 rounded-full bg-cyan-500"></span>
               <span class="text-slate-700 dark:text-slate-300">Incubator Carryover / DOC Base</span>
             </div>
-            <span class="text-slate-900 dark:text-white font-bold">
-              ₦ {{ number_format(!empty($activePb['metrics']['current_in_house_birds']) ? (($activePb['metrics']['incubation_cost'] ?? 0) / $activePb['metrics']['current_in_house_birds']) : 0, 2) }}
+            <span id="ledgerIncubPerBird" class="text-slate-900 dark:text-white font-bold">
+              ₦ {{ number_format($allStock['birds'] > 0 ? ($allStock['incub'] / $allDiv) : 0, 2) }}
             </span>
           </div>
 
@@ -292,8 +345,8 @@
               <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
               <span class="text-slate-700 dark:text-slate-300">House Rent Lump-Sum</span>
             </div>
-            <span class="text-slate-900 dark:text-white font-bold">
-              ₦ {{ number_format(!empty($activePb['metrics']['current_in_house_birds']) ? (($activePb['metrics']['house_rent'] ?? 0) / $activePb['metrics']['current_in_house_birds']) : 0, 2) }}
+            <span id="ledgerRentPerBird" class="text-slate-900 dark:text-white font-bold">
+              ₦ {{ number_format($allStock['birds'] > 0 ? ($allStock['rent'] / $allDiv) : 0, 2) }}
             </span>
           </div>
 
@@ -302,8 +355,8 @@
               <span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
               <span class="text-slate-700 dark:text-slate-300">Medications, Vaccine & Sanitation</span>
             </div>
-            <span class="text-slate-900 dark:text-white font-bold">
-              ₦ {{ number_format(!empty($activePb['metrics']['current_in_house_birds']) ? ((($activePb['metrics']['total_med_cost'] ?? 0) + ($activePb['metrics']['total_sanitation_cost'] ?? 0)) / $activePb['metrics']['current_in_house_birds']) : 0, 2) }}
+            <span id="ledgerVetPerBird" class="text-slate-900 dark:text-white font-bold">
+              ₦ {{ number_format($allStock['birds'] > 0 ? ($allStock['vet'] / $allDiv) : 0, 2) }}
             </span>
           </div>
 
@@ -312,8 +365,8 @@
               <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
               <span class="text-slate-700 dark:text-slate-300">Direct Farm Labor Allocation</span>
             </div>
-            <span class="text-slate-900 dark:text-white font-bold">
-              ₦ {{ number_format(!empty($activePb['metrics']['current_in_house_birds']) ? (($activePb['metrics']['total_labor_cost'] ?? 0) / $activePb['metrics']['current_in_house_birds']) : 0, 2) }}
+            <span id="ledgerLaborPerBird" class="text-slate-900 dark:text-white font-bold">
+              ₦ {{ number_format($allStock['birds'] > 0 ? ($allStock['labor'] / $allDiv) : 0, 2) }}
             </span>
           </div>
         </div>
@@ -323,8 +376,8 @@
         <div class="flex items-center justify-between">
           <div>
             <span class="text-xs text-slate-500 dark:text-slate-400 block font-medium">EXACT BREAKEVEN BASE</span>
-            <span class="text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400">
-              ₦ {{ number_format($costPerBird, 2) }} / bird
+            <span id="ledgerBreakevenBase" class="text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400">
+              ₦ {{ number_format($allBreakeven, 2) }} / bird
             </span>
           </div>
           <button onclick="switchTab('simulatorTab')" class="text-xs font-semibold px-3 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 transition-all flex items-center gap-1.5 cursor-pointer">
@@ -335,6 +388,58 @@
     </div>
   </div>
 </div>
+
+<script>
+  window.dashboardStockMap = <?= json_encode($stockFilterMap, JSON_UNESCAPED_UNICODE) ?>;
+
+  function filterDashboardStock(key) {
+    const map = window.dashboardStockMap || {};
+    const d = map[key] || map['ALL'];
+    if (!d) return;
+
+    const fmt = (n) => '₦ ' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+    const fmt2 = (n) => '₦ ' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    const birds = Number(d.birds || 0);
+    const div = birds > 0 ? birds : 1;
+
+    const setEl = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+    setEl('chartLiveBirdsCount', birds.toLocaleString('en-US') + ' birds surviving');
+    setEl('badgeFeedCost', fmt(d.feed));
+    setEl('badgeIncubCost', fmt(d.incub));
+    setEl('badgeRentCost', fmt(d.rent));
+    setEl('badgeVetCost', fmt(d.vet));
+    setEl('badgeLaborCost', fmt(d.labor));
+
+    setEl('ledgerScopeBadge', key === 'ALL' ? 'All Flocks' : key);
+    setEl('ledgerFeedPerBird', fmt2(birds > 0 ? d.feed / div : 0));
+    setEl('ledgerIncubPerBird', fmt2(birds > 0 ? d.incub / div : 0));
+    setEl('ledgerRentPerBird', fmt2(birds > 0 ? d.rent / div : 0));
+    setEl('ledgerVetPerBird', fmt2(birds > 0 ? d.vet / div : 0));
+    setEl('ledgerLaborPerBird', fmt2(birds > 0 ? d.labor / div : 0));
+    setEl('ledgerBreakevenBase', fmt2(birds > 0 ? d.total / div : 0) + ' / bird');
+
+    if (typeof costBreakdownChart !== 'undefined' && costBreakdownChart) {
+      const totalCost = d.feed + d.incub + d.rent + d.vet + d.labor;
+      const hasData = totalCost > 0;
+      const isDark = document.documentElement.classList.contains('dark');
+      costBreakdownChart.data.labels = hasData
+        ? ['Feed Intake', 'Incubation Base', 'Barn Rent (Lump-Sum)', 'Medication & Sanit.', 'Labor']
+        : ['No Expenses Logged Yet'];
+      costBreakdownChart.data.datasets[0].data = hasData ? [d.feed, d.incub, d.rent, d.vet, d.labor] : [1];
+      costBreakdownChart.data.datasets[0].backgroundColor = hasData
+        ? ['#10b981', '#06b6d4', '#f59e0b', '#a855f7', '#f43f5e']
+        : [isDark ? '#334155' : '#e2e8f0'];
+      costBreakdownChart.options.plugins.tooltip.enabled = hasData;
+      costBreakdownChart.options.plugins.tooltip.callbacks.label = function(item) {
+        const val = item.raw;
+        const pct = totalCost > 0 ? ((val / totalCost) * 100).toFixed(1) : 0;
+        return ` ₦ ${Number(val).toLocaleString()} (${pct}%)`;
+      };
+      costBreakdownChart.update();
+    }
+  }
+</script>
 
 <!-- ========================================== -->
 <!-- TAB 2: INCUBATION & CANDLING MODULE -->
