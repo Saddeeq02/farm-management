@@ -670,6 +670,17 @@
 
         <div class="grid grid-cols-2 gap-3">
           <div>
+            <label class="block text-amber-600 dark:text-amber-300 mb-1">Good Eggs Laid (Optional)</label>
+            <input type="number" name="good_eggs" min="0" value="0" class="w-full bg-white dark:bg-slate-800 border border-amber-400/50 rounded-xl px-3 py-2 text-amber-600 dark:text-amber-300 font-bold outline-none focus:border-amber-500">
+          </div>
+          <div>
+            <label class="block text-slate-700 dark:text-slate-300 mb-1">Cracked Eggs (Optional)</label>
+            <input type="number" name="cracked_eggs" min="0" value="0" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-bold outline-none focus:border-amber-500">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
             <label class="block text-slate-700 dark:text-slate-300 mb-1">Feed Item in Store</label>
             <select name="feed_item_id" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white outline-none focus:border-emerald-500">
               <option value="">-- No Feed Logged --</option>

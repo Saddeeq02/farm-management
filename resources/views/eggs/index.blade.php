@@ -2,16 +2,41 @@
 
 @section('title', 'Eggs Stockroom & Distribution — Blackswan Farms and General Enterprises')
 @section('page_heading', 'Eggs Stockroom, Hatch Transfers & Sales')
-@section('page_subheading', 'Track available egg crates, send eggs straight to your Incubator, or record egg sales.')
+@section('page_subheading', 'Track available egg crates across Layer & Production flocks, auto-price from feed & meds consumed, transfer to Incubator, or sell.')
 
 @section('content')
 @php
-    $ov = $layersOverview ?? ['flocks' => [], 'transfers' => [], 'sales' => [], 'summary' => []];
-    $flocks = $ov['flocks'] ?? [];
+    $ov = $layersOverview ?? ['flocks' => [], 'egg_sources' => [], 'transfers' => [], 'sales' => [], 'summary' => []];
+    $eggSources = $ov['egg_sources'] ?? ($ov['flocks'] ?? []);
     $transfers = $ov['transfers'] ?? [];
     $sales = $ov['sales'] ?? [];
     $sum = $ov['summary'] ?? [];
     $availEggs = (int) ($sum['available_eggs'] ?? 0);
+
+    $sourcesJsMap = [
+        'ALL' => [
+            'label' => 'Combined Egg Stock',
+            'cost_per_egg' => (float) ($sum['avg_cost_per_egg'] ?? 0),
+            'cost_per_crate' => (float) ($sum['avg_cost_per_crate'] ?? 0),
+            'rec_egg' => (float) ($sum['avg_rec_price_per_egg'] ?? 0),
+            'rec_crate' => (float) ($sum['avg_rec_price_per_crate'] ?? 0),
+            'available_eggs' => $availEggs,
+        ],
+    ];
+    foreach ($eggSources as $esSrc) {
+        $sKey = (string) ($esSrc['source_key'] ?? '');
+        if ($sKey === '') {
+            continue;
+        }
+        $sourcesJsMap[$sKey] = [
+            'label' => $esSrc['batch_code'] . ' • ' . $esSrc['flock_name'],
+            'cost_per_egg' => (float) ($esSrc['cost_per_egg'] ?? 0),
+            'cost_per_crate' => (float) ($esSrc['cost_per_crate'] ?? 0),
+            'rec_egg' => (float) ($esSrc['recommended_price_per_egg'] ?? 0),
+            'rec_crate' => (float) ($esSrc['recommended_price_per_crate'] ?? 0),
+            'available_eggs' => (int) ($esSrc['available_eggs'] ?? 0),
+        ];
+    }
 @endphp
 
 <div class="space-y-6">
@@ -22,7 +47,7 @@
                 Eggs Stockroom &amp; Allocation
             </h2>
             <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Standard 30 eggs = 1 crate. Transfer available eggs into your Incubator or sell by crate / piece.
+                Standard 30 eggs = 1 crate. Costs are automatically calculated from each flock's feed + medication consumed.
             </p>
         </div>
 
@@ -30,7 +55,13 @@
             <a href="/?page=layers"
                class="px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-900/70 hover:bg-slate-200/70 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-mono font-bold transition flex items-center gap-1.5">
                 <i class="fa-solid fa-feather text-emerald-500"></i>
-                <span>Layers &amp; Collect</span>
+                <span>Layers</span>
+                <i class="fa-solid fa-arrow-right text-[10px]"></i>
+            </a>
+            <a href="/?page=production"
+               class="px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-900/70 hover:bg-slate-200/70 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-mono font-bold transition flex items-center gap-1.5">
+                <i class="fa-solid fa-kiwi-bird text-cyan-500"></i>
+                <span>Production</span>
                 <i class="fa-solid fa-arrow-right text-[10px]"></i>
             </a>
             <button type="button" onclick="openSellEggsModal()"
@@ -64,7 +95,7 @@
                 {{ number_format((int) ($sum['total_good_eggs'] ?? 0)) }} pcs
             </div>
             <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-mono">
-                {{ number_format((int) ($sum['total_good_crates'] ?? 0)) }} crates • From {{ count($flocks) }} layer flock(s)
+                {{ number_format((int) ($sum['total_good_crates'] ?? 0)) }} crates • From {{ count($eggSources) }} flock(s)
             </p>
         </div>
 
@@ -89,14 +120,14 @@
         </div>
     </div>
 
-    <!-- Egg Stock Breakdown by Layer Flock -->
+    <!-- Egg Stock Breakdown by Layer & Egg-Laying Production Flocks -->
     <div class="glass-card rounded-2xl overflow-hidden">
         <div class="px-6 py-4 border-b border-slate-200/80 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
             <div>
                 <h3 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    <i class="fa-solid fa-layer-group text-amber-500"></i> Egg Stock by Layer Flock
+                    <i class="fa-solid fa-layer-group text-amber-500"></i> Egg Stock &amp; Auto-Calculated Pricing by Flock
                 </h3>
-                <p class="text-[11px] text-slate-500 dark:text-slate-400">Live eggs available per source flock for hatch setting or direct sale.</p>
+                <p class="text-[11px] text-slate-500 dark:text-slate-400">Live eggs from Layer &amp; Production flocks, with Cost / Egg computed from Feed + Medication consumed.</p>
             </div>
             @if ((int) ($sum['unassigned_sold_eggs'] ?? 0) > 0)
                 <span class="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30">
@@ -109,36 +140,47 @@
             <table class="w-full text-left font-mono text-xs text-slate-700 dark:text-slate-300">
                 <thead class="bg-slate-100/80 dark:bg-slate-900/80 text-slate-500 dark:text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-800">
                     <tr>
-                        <th class="py-3 px-4">Flock</th>
-                        <th class="py-3 px-4">Species</th>
+                        <th class="py-3 px-4">Flock Source</th>
                         <th class="py-3 px-4">Collected</th>
                         <th class="py-3 px-4">Transferred</th>
                         <th class="py-3 px-4">Sold</th>
+                        <th class="py-3 px-4">Cost / Egg &amp; Crate</th>
                         <th class="py-3 px-4">Available Now</th>
                         <th class="py-3 px-4 text-right">Quick Action</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-200/70 dark:divide-slate-800/70">
-                    @forelse ($flocks as $f)
+                    @forelse ($eggSources as $f)
+                        @php $isProdSrc = ($f['source_type'] ?? 'layer') === 'production'; @endphp
                         <tr>
                             <td class="py-3 px-4">
-                                <span class="font-bold text-slate-900 dark:text-white">{{ $f['batch_code'] }}</span>
-                                <span class="block text-[10px] font-sans text-slate-500">{{ $f['flock_name'] }}</span>
+                                <div class="flex items-center gap-1.5">
+                                    <span class="font-bold text-slate-900 dark:text-white">{{ $f['batch_code'] }}</span>
+                                    <span class="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase {{ $isProdSrc ? 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-300 border border-cyan-500/30' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30' }}">
+                                        {{ $isProdSrc ? 'Production' : 'Layer' }}
+                                    </span>
+                                </div>
+                                <span class="block text-[10px] font-sans text-slate-500 mt-0.5">{{ $f['flock_name'] }} • {{ $f['species_label'] }}</span>
                             </td>
-                            <td class="py-3 px-4 font-sans">{{ $f['species_label'] }}</td>
                             <td class="py-3 px-4">{{ number_format((int) $f['total_good_eggs']) }} pcs</td>
                             <td class="py-3 px-4 text-purple-600 dark:text-purple-300">{{ number_format((int) $f['transferred_eggs']) }} pcs</td>
                             <td class="py-3 px-4 text-cyan-600 dark:text-cyan-300">{{ number_format((int) $f['sold_eggs']) }} pcs</td>
+                            <td class="py-3 px-4">
+                                <span class="font-bold text-slate-900 dark:text-white">₦{{ number_format((float) ($f['cost_per_egg'] ?? 0), 2) }}/egg</span>
+                                <span class="block text-[10px] text-emerald-600 dark:text-emerald-400">
+                                    ₦{{ number_format((float) ($f['cost_per_crate'] ?? 0), 0) }}/cr (+30%: ₦{{ number_format((float) ($f['recommended_price_per_crate'] ?? 0), 0) }})
+                                </span>
+                            </td>
                             <td class="py-3 px-4 font-bold text-emerald-600 dark:text-emerald-400">
                                 {{ number_format((int) $f['available_eggs']) }} pcs
                                 <span class="block text-[10px] text-slate-500 font-normal">{{ $f['available_crates'] }} cr, {{ $f['available_loose'] }} pcs</span>
                             </td>
                             <td class="py-3 px-4 text-right whitespace-nowrap space-x-1.5">
-                                <button type="button" onclick="openTransferEggsModal({{ (int) $f['id'] }}, {{ (int) min($f['available_eggs'], $availEggs) }})"
+                                <button type="button" onclick="openTransferEggsModal('{{ $f['source_key'] }}', {{ (int) min($f['available_eggs'], $availEggs) }})"
                                         class="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[11px] font-bold transition cursor-pointer">
                                     Transfer
                                 </button>
-                                <button type="button" onclick="openSellEggsModal({{ (int) $f['id'] }})"
+                                <button type="button" onclick="openSellEggsModal('{{ $f['source_key'] }}')"
                                         class="px-2.5 py-1 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 text-[11px] font-bold transition cursor-pointer">
                                     Sell
                                 </button>
@@ -147,7 +189,7 @@
                     @empty
                         <tr>
                             <td colspan="7" class="py-8 text-center text-slate-400 dark:text-slate-500 font-sans text-xs">
-                                No eggs collected yet. <a href="/?page=layers" class="text-emerald-500 font-bold hover:underline">Go to Layers Page to collect eggs →</a>
+                                No eggs collected yet. Log daily eggs on the <a href="/?page=layers" class="text-emerald-500 font-bold hover:underline">Layers Page</a> or <a href="/?page=production" class="text-cyan-500 font-bold hover:underline">Production Page</a>.
                             </td>
                         </tr>
                     @endforelse
@@ -179,7 +221,7 @@
                             <th class="py-3 px-4">Source</th>
                             <th class="py-3 px-4">Buyer &amp; Phone</th>
                             <th class="py-3 px-4">Quantity</th>
-                            <th class="py-3 px-4">Total (₦)</th>
+                            <th class="py-3 px-4">Total &amp; Profit (₦)</th>
                             <th class="py-3 px-4">Paid / Balance</th>
                             <th class="py-3 px-4">Status</th>
                             <th class="py-3 px-4 text-right">Action</th>
@@ -203,7 +245,15 @@
                                     <span class="font-bold">{{ $es['quantity'] }} {{ $es['unit_mode'] }}</span>
                                     <span class="block text-[10px] text-slate-500">({{ number_format((int) $es['total_eggs']) }} eggs @ ₦{{ number_format((float) $es['unit_price'], 2) }})</span>
                                 </td>
-                                <td class="py-3 px-4 font-bold text-slate-900 dark:text-white">₦{{ number_format((float) $es['total_amount'], 2) }}</td>
+                                <td class="py-3 px-4">
+                                    <span class="font-bold text-slate-900 dark:text-white">₦{{ number_format((float) $es['total_amount'], 2) }}</span>
+                                    @if ((float) ($es['cost_basis'] ?? 0) > 0)
+                                        @php $ep = (float) ($es['estimated_profit'] ?? 0); @endphp
+                                        <span class="block text-[10px] {{ $ep >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500' }}">
+                                            Cost: ₦{{ number_format((float) $es['cost_basis'], 0) }} • {{ $ep >= 0 ? '+' : '' }}₦{{ number_format($ep, 0) }}
+                                        </span>
+                                    @endif
+                                </td>
                                 <td class="py-3 px-4">
                                     <span class="text-emerald-600 dark:text-emerald-400">Paid: ₦{{ number_format((float) $es['amount_paid'], 2) }}</span>
                                     @if ((float) $es['balance_due'] > 0)
@@ -245,9 +295,9 @@
                     <thead class="bg-slate-100/80 dark:bg-slate-900/80 text-slate-500 dark:text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-800">
                         <tr>
                             <th class="py-3 px-4">Date</th>
-                            <th class="py-3 px-4">Source Layer Flock</th>
+                            <th class="py-3 px-4">Source Flock</th>
                             <th class="py-3 px-4">Eggs Transferred</th>
-                            <th class="py-3 px-4">Internal Valuation</th>
+                            <th class="py-3 px-4">Carried Egg Cost</th>
                             <th class="py-3 px-4">Incubator Batch</th>
                             <th class="py-3 px-4">Notes</th>
                         </tr>
@@ -306,13 +356,13 @@
             <input type="hidden" name="action" value="transfer_eggs_to_incubator">
 
             <div>
-                <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Source Layer Flock</label>
-                <select name="layer_flock_id" id="transferFlockSelect" required
+                <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Source Flock (Layers or Production)</label>
+                <select name="source_key" id="transferSourceSelect" onchange="updateTransferEggValuation()" required
                         class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 font-mono outline-none focus:border-emerald-500">
-                    @forelse ($flocks as $f)
-                        <option value="{{ $f['id'] }}">{{ $f['batch_code'] }} • {{ $f['flock_name'] }} ({{ (int) $f['available_eggs'] }} avail)</option>
+                    @forelse ($eggSources as $f)
+                        <option value="{{ $f['source_key'] }}">{{ $f['batch_code'] }} • {{ $f['flock_name'] }} ({{ (int) $f['available_eggs'] }} avail @ ₦{{ number_format((float) $f['cost_per_egg'], 2) }}/egg)</option>
                     @empty
-                        <option value="">Collect eggs on Layers page first</option>
+                        <option value="">Collect eggs on Layers or Production page first</option>
                     @endforelse
                 </select>
             </div>
@@ -320,7 +370,7 @@
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                     <label class="block text-[11px] font-medium text-emerald-600 dark:text-emerald-300 mb-1">Eggs to Transfer (pcs)</label>
-                    <input type="number" name="eggs_transferred" id="transferEggsQty" min="1" placeholder="e.g. 60" required
+                    <input type="number" name="eggs_transferred" id="transferEggsQty" min="1" placeholder="e.g. 60" oninput="updateTransferEggValuation()" required
                            class="w-full rounded-xl border border-emerald-500/50 bg-white/90 dark:bg-slate-800/90 text-emerald-600 dark:text-emerald-300 font-bold px-3 py-2 font-mono outline-none focus:border-emerald-500">
                 </div>
                 <div>
@@ -337,9 +387,10 @@
                            class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 font-mono outline-none focus:border-emerald-500">
                 </div>
                 <div>
-                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Internal Valuation (₦, optional)</label>
-                    <input type="number" step="0.01" min="0" name="egg_valuation" value="0" placeholder="0.00"
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Carried Egg Cost (₦ — auto-calculated)</label>
+                    <input type="number" step="0.01" min="0" name="egg_valuation" id="transferEggValuation" placeholder="Auto from feed + med" oninput="this.dataset.userEdited='1'"
                            class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 font-mono outline-none focus:border-emerald-500">
+                    <span id="transferValFormulaNote" class="block text-[10px] font-mono text-emerald-600 dark:text-emerald-400 mt-1">Auto: Eggs × Flock Cost/Egg</span>
                 </div>
             </div>
 
@@ -379,11 +430,11 @@
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                     <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Source Egg Stock</label>
-                    <select name="layer_flock_id" id="sellFlockSelect"
+                    <select name="source_key" id="sellSourceSelect" onchange="onSellSourceOrModeChange()"
                             class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 font-mono outline-none focus:border-cyan-500">
                         <option value="">Combined Egg Stock ({{ $availEggs }} avail)</option>
-                        @foreach ($flocks as $f)
-                            <option value="{{ $f['id'] }}">{{ $f['batch_code'] }} • {{ $f['flock_name'] }} ({{ (int) $f['available_eggs'] }} avail)</option>
+                        @foreach ($eggSources as $f)
+                            <option value="{{ $f['source_key'] }}">{{ $f['batch_code'] }} • {{ $f['flock_name'] }} ({{ (int) $f['available_eggs'] }} avail)</option>
                         @endforeach
                     </select>
                 </div>
@@ -394,10 +445,16 @@
                 </div>
             </div>
 
+            <!-- Auto-Calculated Breakeven & +30% Preview Strip -->
+            <div id="sellEggCostPreview" class="rounded-xl bg-emerald-500/10 border border-emerald-500/30 px-3 py-2 text-[11px] font-mono text-emerald-700 dark:text-emerald-300 flex flex-wrap items-center justify-between gap-2">
+                <span>Breakeven: ₦0.00/egg (₦0/crate)</span>
+                <span class="font-bold">Suggested (+30%): ₦0/crate</span>
+            </div>
+
             <div class="grid grid-cols-3 gap-3">
                 <div>
                     <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Unit</label>
-                    <select name="unit_mode" id="sellEggUnitMode" onchange="updateEggSalePreview()"
+                    <select name="unit_mode" id="sellEggUnitMode" onchange="onSellSourceOrModeChange()"
                             class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 font-mono outline-none focus:border-cyan-500">
                         <option value="crates">Crates (30 pcs)</option>
                         <option value="pieces">Pieces (1 pc)</option>
@@ -410,14 +467,17 @@
                 </div>
                 <div>
                     <label class="block text-[11px] font-medium text-cyan-600 dark:text-cyan-300 mb-1">Price / Unit (₦)</label>
-                    <input type="number" step="0.01" min="0" name="unit_price" id="sellEggUnitPrice" placeholder="5500" oninput="updateEggSalePreview()" required
+                    <input type="number" step="0.01" min="0" name="unit_price" id="sellEggUnitPrice" placeholder="5500" oninput="this.dataset.userEdited='1'; updateEggSalePreview()" required
                            class="w-full rounded-xl border border-cyan-500/50 bg-white/90 dark:bg-slate-800/90 text-cyan-600 dark:text-cyan-300 font-bold px-3 py-2 font-mono outline-none focus:border-cyan-500">
                 </div>
             </div>
 
-            <div class="rounded-2xl bg-slate-100/90 dark:bg-slate-900/80 border border-cyan-500/30 p-3 flex items-center justify-between font-mono">
+            <div class="rounded-2xl bg-slate-100/90 dark:bg-slate-900/80 border border-cyan-500/30 p-3 flex flex-wrap items-center justify-between gap-2 font-mono">
                 <span class="text-slate-500 dark:text-slate-400">Total: <strong id="sellEggTotalPieces" class="text-slate-900 dark:text-white">30 eggs</strong></span>
-                <span id="sellEggTotalAmount" class="text-sm font-extrabold text-emerald-600 dark:text-emerald-400">₦ 0.00</span>
+                <div class="text-right">
+                    <span id="sellEggTotalAmount" class="text-sm font-extrabold text-emerald-600 dark:text-emerald-400 block">₦ 0.00</span>
+                    <span id="sellEggEstProfit" class="text-[10px] text-slate-500 dark:text-slate-400">Est. Profit: ₦ 0.00</span>
+                </div>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -493,6 +553,8 @@
 </div>
 
 <script>
+  window.eggSourcesMap = <?= json_encode($sourcesJsMap, JSON_UNESCAPED_UNICODE) ?>;
+
   function switchEggLedgerTab(tabId) {
     const salesTab = document.getElementById('eggSalesTab');
     const transTab = document.getElementById('eggTransfersTab');
@@ -516,31 +578,97 @@
     }
   }
 
-  function openTransferEggsModal(flockId, maxAvail) {
-    const sel = document.getElementById('transferFlockSelect');
+  function openTransferEggsModal(sourceKey, maxAvail) {
+    const sel = document.getElementById('transferSourceSelect');
     const qty = document.getElementById('transferEggsQty');
-    if (sel && flockId) sel.value = String(flockId);
+    const valInp = document.getElementById('transferEggValuation');
+    if (sel && sourceKey) sel.value = String(sourceKey);
     if (qty && maxAvail > 0) qty.max = String(maxAvail);
+    if (valInp) delete valInp.dataset.userEdited;
+    updateTransferEggValuation();
     openModal('transferEggsModal');
   }
 
-  function openSellEggsModal(flockId) {
-    const sel = document.getElementById('sellFlockSelect');
-    if (sel) sel.value = flockId ? String(flockId) : '';
-    updateEggSalePreview();
+  function updateTransferEggValuation() {
+    const map = window.eggSourcesMap || {};
+    const sel = document.getElementById('transferSourceSelect');
+    const qtyInp = document.getElementById('transferEggsQty');
+    const valInp = document.getElementById('transferEggValuation');
+    const noteEl = document.getElementById('transferValFormulaNote');
+    if (!sel || !valInp) return;
+
+    const src = map[sel.value] || map['ALL'];
+    const costPerEgg = src ? Number(src.cost_per_egg || 0) : 0;
+    const eggs = Math.max(0, parseInt(qtyInp ? qtyInp.value || '0' : '0', 10));
+    const calc = Math.round(eggs * costPerEgg * 100) / 100;
+
+    if (!valInp.dataset.userEdited) {
+      valInp.value = eggs > 0 ? calc.toFixed(2) : '';
+    }
+    if (noteEl) {
+      noteEl.textContent = eggs > 0
+        ? 'Auto: ' + eggs + ' eggs × ₦' + costPerEgg.toFixed(2) + '/egg = ₦' + calc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : 'Flock Cost: ₦' + costPerEgg.toFixed(2) + '/egg';
+    }
+  }
+
+  function openSellEggsModal(sourceKey) {
+    const sel = document.getElementById('sellSourceSelect');
+    const priceInp = document.getElementById('sellEggUnitPrice');
+    if (sel) sel.value = sourceKey ? String(sourceKey) : '';
+    if (priceInp) delete priceInp.dataset.userEdited;
+    onSellSourceOrModeChange();
     openModal('sellEggsModal');
   }
 
+  function onSellSourceOrModeChange() {
+    const map = window.eggSourcesMap || {};
+    const sel = document.getElementById('sellSourceSelect');
+    const mode = document.getElementById('sellEggUnitMode')?.value || 'crates';
+    const priceInp = document.getElementById('sellEggUnitPrice');
+    const previewEl = document.getElementById('sellEggCostPreview');
+    const key = (sel && sel.value) ? sel.value : 'ALL';
+    const src = map[key] || map['ALL'];
+
+    if (src && previewEl) {
+      const cEgg = Number(src.cost_per_egg || 0);
+      const cCrate = Number(src.cost_per_crate || 0);
+      const rEgg = Number(src.rec_egg || 0);
+      const rCrate = Number(src.rec_crate || 0);
+      previewEl.innerHTML = '<span>Breakeven: ₦' + cEgg.toFixed(2) + '/egg (₦' + Math.round(cCrate).toLocaleString('en-US') + '/cr)</span>'
+        + '<span class="font-bold">Suggested (+30%): ' + (mode === 'crates' ? '₦' + rCrate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '/crate' : '₦' + rEgg.toFixed(2) + '/egg') + '</span>';
+      if (priceInp && !priceInp.dataset.userEdited) {
+        const suggested = mode === 'crates' ? rCrate : rEgg;
+        priceInp.value = suggested > 0 ? suggested.toFixed(2) : '';
+      }
+    }
+    updateEggSalePreview();
+  }
+
   function updateEggSalePreview() {
+    const map = window.eggSourcesMap || {};
+    const sel = document.getElementById('sellSourceSelect');
+    const key = (sel && sel.value) ? sel.value : 'ALL';
+    const src = map[key] || map['ALL'];
+    const cEgg = src ? Number(src.cost_per_egg || 0) : 0;
+
     const mode = document.getElementById('sellEggUnitMode')?.value || 'crates';
     const qty = Math.max(0, parseFloat(document.getElementById('sellEggQty')?.value || '0'));
     const price = Math.max(0, parseFloat(document.getElementById('sellEggUnitPrice')?.value || '0'));
     const totalEggs = mode === 'crates' ? Math.round(qty * 30) : Math.round(qty);
     const totalAmt = qty * price;
+    const costBasis = totalEggs * cEgg;
+    const estProfit = totalAmt - costBasis;
+
     const pcsEl = document.getElementById('sellEggTotalPieces');
     const amtEl = document.getElementById('sellEggTotalAmount');
+    const profEl = document.getElementById('sellEggEstProfit');
     if (pcsEl) pcsEl.textContent = totalEggs.toLocaleString('en-US') + ' eggs';
     if (amtEl) amtEl.textContent = '₦ ' + totalAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (profEl) {
+      profEl.textContent = 'Cost: ₦' + costBasis.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        + ' • Est. Profit: ' + (estProfit >= 0 ? '+' : '') + '₦' + estProfit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
   }
 
   function toggleEggPartialPaid() {

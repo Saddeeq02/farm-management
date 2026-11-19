@@ -142,8 +142,8 @@
                                 <span class="font-bold">{{ number_format((int) $f['total_good_eggs']) }} ({{ $f['total_good_crates'] }} cr)</span>
                             </div>
                             <div>
-                                <span class="block text-[9px] text-slate-400">FEED + MED / EGG</span>
-                                <span class="font-bold text-emerald-600 dark:text-emerald-400">₦{{ number_format((float) $f['cost_per_egg'], 2) }}</span>
+                                <span class="block text-[9px] text-slate-400">FEED + MED COST / EGG</span>
+                                <span class="font-bold text-emerald-600 dark:text-emerald-400">₦{{ number_format((float) $f['cost_per_egg'], 2) }} <span class="text-[10px] font-normal text-slate-500">(₦{{ number_format((float) ($f['cost_per_crate'] ?? 0), 0) }}/cr)</span></span>
                             </div>
                         </div>
                     </div>
@@ -487,3 +487,4 @@
   }
 </script>
 @endsection
+

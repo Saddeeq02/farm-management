@@ -152,6 +152,20 @@
                     </div>
                 </div>
 
+                <!-- Optional Daily Eggs Collected for this Flock -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div>
+                        <label class="block text-[11px] font-medium text-amber-700 dark:text-amber-300 mb-1">Good Eggs Laid Today (Optional — adds to Eggs Store)</label>
+                        <input type="number" name="good_eggs" value="0" min="0"
+                               class="w-full rounded-xl border border-amber-400/50 bg-amber-50/50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-300 font-bold px-3 py-1.5 text-xs font-mono focus:border-amber-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Cracked / Broken Eggs Today (Optional)</label>
+                        <input type="number" name="cracked_eggs" value="0" min="0"
+                               class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-1.5 text-xs font-mono focus:border-amber-500 focus:outline-none">
+                    </div>
+                </div>
+
                 <!-- Labor, Sanitation, Water/Other, Date & Notes -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-1">
                     <div>
@@ -293,6 +307,11 @@
                                 From {{ $pb['origin_incubation_batch']['batch_code'] }}
                             </span>
                         @endif
+                        @if (($m['total_good_eggs'] ?? 0) > 0)
+                            <a href="/?page=eggs" class="text-[11px] font-mono px-2 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-bold hover:bg-amber-500/25">
+                                <i class="fa-solid fa-egg mr-1"></i>{{ number_format((int) $m['total_good_eggs']) }} eggs • ₦{{ number_format((float) ($m['egg_cost_per_egg'] ?? 0), 2) }}/egg
+                            </a>
+                        @endif
                         <span class="text-xs text-slate-600 dark:text-slate-300">Day {{ $pb['age_days'] }} (Week {{ $pb['age_weeks'] }}) • Started {{ $pb['start_date'] }}</span>
                     </div>
                     <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{{ $pb['flock_type'] }}</p>
@@ -362,6 +381,7 @@
                         <tr class="border-b border-slate-200 dark:border-slate-700/80 text-slate-500 dark:text-slate-400">
                             <th class="pb-2">Date</th>
                             <th class="pb-2 text-right">Mortality</th>
+                            <th class="pb-2 text-right">Eggs</th>
                             <th class="pb-2 text-right">Water (L)</th>
                             <th class="pb-2">Feed Type &amp; Grams</th>
                             <th class="pb-2 text-right">Feed Cost</th>
@@ -377,6 +397,16 @@
                                 <td class="py-2.5 text-slate-600 dark:text-slate-300">{{ $log['log_date'] }}</td>
                                 <td class="py-2.5 text-right {{ (int)$log['mortality_count'] > 0 ? 'text-rose-600 dark:text-rose-400 font-semibold' : 'text-slate-400 dark:text-slate-500' }}">
                                     {{ $log['mortality_count'] }}
+                                </td>
+                                <td class="py-2.5 text-right {{ (int)($log['good_eggs'] ?? 0) > 0 ? 'text-amber-600 dark:text-amber-300 font-semibold' : 'text-slate-400 dark:text-slate-500' }}">
+                                    @if ((int)($log['good_eggs'] ?? 0) > 0)
+                                        {{ number_format((int)$log['good_eggs']) }} pcs
+                                        @if ((int)($log['cracked_eggs'] ?? 0) > 0)
+                                            <span class="block text-[10px] text-rose-500">({{ (int)$log['cracked_eggs'] }} crk)</span>
+                                        @endif
+                                    @else
+                                        —
+                                    @endif
                                 </td>
                                 <td class="py-2.5 text-right text-slate-700 dark:text-slate-200">{{ number_format((float)$log['water_liters'], 1) }} L</td>
                                 <td class="py-2.5 font-sans text-slate-800 dark:text-slate-100">
@@ -396,7 +426,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="9" class="py-4 text-center font-sans text-slate-500 dark:text-slate-400">No daily telemetry recorded for this batch yet.</td>
+                                <td colspan="10" class="py-4 text-center font-sans text-slate-500 dark:text-slate-400">No daily telemetry recorded for this batch yet.</td>
                             </tr>
                         @endforelse
                     </tbody>

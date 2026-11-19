@@ -316,6 +316,8 @@ class FarmService
             usort($batchSales, fn($a, $b) => strcmp($b['sale_date'], $a['sale_date']) ?: ((int) $b['id'] <=> (int) $a['id']));
 
             $totalMortality = 0;
+            $totalGoodEggs = 0;
+            $totalCrackedEggs = 0;
             $totalWaterLiters = 0.0;
             $totalFeedGrams = 0.0;
             $totalFeedCost = 0.0;
@@ -327,6 +329,10 @@ class FarmService
             $lastFeedCategory = null;
 
             foreach ($batchLogs as $idx => $log) {
+                $logGoodEggs = (int) ($log['good_eggs'] ?? 0);
+                $logCrackedEggs = (int) ($log['cracked_eggs'] ?? 0);
+                $totalGoodEggs += $logGoodEggs;
+                $totalCrackedEggs += $logCrackedEggs;
                 $totalMortality += (int) $log['mortality_count'];
                 $totalWaterLiters += (float) $log['water_liters'];
                 $totalFeedGrams += (float) $log['feed_grams'];
@@ -340,6 +346,8 @@ class FarmService
 
                 $feedItem = isset($log['feed_item_id']) ? ($invMap[(int) $log['feed_item_id']] ?? null) : null;
                 $medItem = isset($log['med_item_id']) ? ($invMap[(int) $log['med_item_id']] ?? null) : null;
+                $batchLogs[$idx]['good_eggs'] = $logGoodEggs;
+                $batchLogs[$idx]['cracked_eggs'] = $logCrackedEggs;
                 $batchLogs[$idx]['feed_item_name'] = $feedItem['item_name'] ?? 'None';
                 $batchLogs[$idx]['feed_category'] = $feedItem['category'] ?? null;
                 if (!empty($log['medications_used']) && is_array($log['medications_used'])) {
@@ -434,6 +442,9 @@ class FarmService
             $incBatchId = isset($batch['incubation_batch_id']) ? (int) $batch['incubation_batch_id'] : 0;
             $originIncBatch = $incBatchId > 0 ? ($incMap[$incBatchId] ?? null) : null;
 
+            $eggCostPerEgg = $totalGoodEggs > 0 ? round(($totalFeedCost + $totalMedCost) / $totalGoodEggs, 2) : 0.0;
+            $eggCostPerCrate = round($eggCostPerEgg * 30, 2);
+
             $batch['logs'] = $batchLogs;
             $batch['sales'] = $batchSales;
             $batch['origin_incubation_batch'] = $originIncBatch;
@@ -445,6 +456,10 @@ class FarmService
                 'initial_birds' => $initialBirds,
                 'total_mortality' => $totalMortality,
                 'mortality_rate_pct' => round(($totalMortality / $initialBirds) * 100, 2),
+                'total_good_eggs' => $totalGoodEggs,
+                'total_cracked_eggs' => $totalCrackedEggs,
+                'egg_cost_per_egg' => $eggCostPerEgg,
+                'egg_cost_per_crate' => $eggCostPerCrate,
                 'surviving_biological_birds' => $survivingBiologicalPool,
                 'current_in_house_birds' => $currentInHouseBirds,
                 'total_birds_sold' => $totalBirdsSold,
@@ -1131,11 +1146,15 @@ class FarmService
         $laborCost = max(0.0, (float) ($input['labor_cost'] ?? 0));
         $sanitationCost = max(0.0, (float) ($input['sanitation_cost'] ?? 0));
         $waterOtherCost = max(0.0, (float) ($input['water_other_cost'] ?? 0));
+        $goodEggs = max(0, (int) ($input['good_eggs'] ?? 0));
+        $crackedEggs = max(0, (int) ($input['cracked_eggs'] ?? 0));
 
         $logId = $this->db->insert('production_daily_logs', [
             'production_batch_id' => $batchId,
             'log_date' => $input['log_date'] ?: date('Y-m-d'),
             'mortality_count' => $mortality,
+            'good_eggs' => $goodEggs,
+            'cracked_eggs' => $crackedEggs,
             'water_liters' => $waterLiters,
             'feed_item_id' => $feedItemId,
             'feed_grams' => $feedGrams,
@@ -1172,6 +1191,13 @@ class FarmService
                     'flock_insight'
                 );
             }
+        }
+
+        if ($goodEggs > 0) {
+            $this->addAiMemory(
+                "Eggs collected from production flock {$batch['batch_code']} ({$batch['flock_type']}): {$goodEggs} good eggs, {$crackedEggs} cracked.",
+                'layers'
+            );
         }
 
         return $logId;
@@ -2115,6 +2141,8 @@ class FarmService
     {
         $flocks = $this->db->getTable('layer_flocks');
         $logs = $this->db->getTable('egg_collection_logs');
+        $prodBatches = $this->db->getTable('production_batches');
+        $prodLogs = $this->db->getTable('production_daily_logs');
         $transfers = $this->db->getTable('egg_transfers');
         $sales = $this->db->getTable('egg_sales');
         $invItems = $this->db->getTable('inventory_items');
@@ -2125,19 +2153,51 @@ class FarmService
             $invById[(int) $it['id']] = $it;
         }
 
+        $resolveRowSourceKey = static function (array $r): string {
+            if (!empty($r['source_key'])) {
+                return (string) $r['source_key'];
+            }
+            if (!empty($r['production_batch_id'])) {
+                return 'production:' . (int) $r['production_batch_id'];
+            }
+            if (!empty($r['layer_flock_id'])) {
+                return 'layer:' . (int) $r['layer_flock_id'];
+            }
+            return '';
+        };
+
+        $detectSpecies = static function (string $text): string {
+            $t = strtolower($text);
+            if (str_contains($t, 'turkey')) {
+                return 'turkey';
+            }
+            if (str_contains($t, 'duck')) {
+                return 'duck';
+            }
+            if (str_contains($t, 'guinea')) {
+                return 'guinea_fowl';
+            }
+            if (str_contains($t, 'quail')) {
+                return 'quail';
+            }
+            return 'chicken';
+        };
+
         $logsByFlock = [];
         foreach ($logs as $l) {
             $fid = (int) ($l['layer_flock_id'] ?? 0);
             $logsByFlock[$fid][] = $l;
         }
 
-        $transfersByFlock = [];
+        $transfersBySource = [];
         foreach ($transfers as $t) {
-            $fid = (int) ($t['layer_flock_id'] ?? 0);
-            $transfersByFlock[$fid] = ($transfersByFlock[$fid] ?? 0) + (int) ($t['eggs_transferred'] ?? 0);
+            $sKey = $resolveRowSourceKey($t);
+            if ($sKey !== '') {
+                $transfersBySource[$sKey] = ($transfersBySource[$sKey] ?? 0) + (int) ($t['eggs_transferred'] ?? 0);
+            }
         }
 
-        $salesByFlock = [];
+        $salesBySource = [];
         $unassignedSoldEggs = 0;
         $totalSoldEggs = 0;
         $eggSalesBilled = 0.0;
@@ -2145,11 +2205,11 @@ class FarmService
         $eggSalesReceivables = 0.0;
 
         foreach ($sales as $s) {
-            $fid = (int) ($s['layer_flock_id'] ?? 0);
+            $sKey = $resolveRowSourceKey($s);
             $tEggs = (int) ($s['total_eggs'] ?? 0);
             $totalSoldEggs += $tEggs;
-            if ($fid > 0) {
-                $salesByFlock[$fid] = ($salesByFlock[$fid] ?? 0) + $tEggs;
+            if ($sKey !== '') {
+                $salesBySource[$sKey] = ($salesBySource[$sKey] ?? 0) + $tEggs;
             } else {
                 $unassignedSoldEggs += $tEggs;
             }
@@ -2159,17 +2219,21 @@ class FarmService
         }
 
         $flockMap = [];
+        $sourceMap = [];
         $enrichedFlocks = [];
+        $eggSources = [];
         $liveLayers = 0;
         $activeFlockCount = 0;
         $totalGoodEggsAll = 0;
         $totalCrackedEggsAll = 0;
         $totalLayerCostAll = 0.0;
+        $totalEggInputCostAll = 0.0;
         $totalTransferredAll = 0;
         $weightedLayRateSum = 0.0;
 
         foreach ($flocks as $f) {
             $fid = (int) $f['id'];
+            $sKey = 'layer:' . $fid;
             $fLogs = $logsByFlock[$fid] ?? [];
             usort($fLogs, fn($a, $b) => strcmp((string) ($b['log_date'] ?? ''), (string) ($a['log_date'] ?? '')) ?: ((int) $b['id'] <=> (int) $a['id']));
 
@@ -2194,18 +2258,24 @@ class FarmService
             $daysElapsed = max(0, (int) floor((strtotime(date('Y-m-d')) - strtotime($startDate)) / 86400));
             $currentAgeWeeks = (int) ($f['age_weeks'] ?? 20) + (int) floor($daysElapsed / 7);
 
-            $transferred = (int) ($transfersByFlock[$fid] ?? 0);
-            $sold = (int) ($salesByFlock[$fid] ?? 0);
+            $transferred = (int) ($transfersBySource[$sKey] ?? 0);
+            $sold = (int) ($salesBySource[$sKey] ?? 0);
             $available = max(0, $goodEggs - $transferred - $sold);
 
             $purchaseCost = (float) ($f['purchase_cost'] ?? 0);
             $totalCost = round($purchaseCost + $feedCost + $medCost, 2);
             $costPerEgg = $goodEggs > 0 ? round(($feedCost + $medCost) / $goodEggs, 2) : 0.0;
+            $costPerCrate = round($costPerEgg * 30, 2);
+            $recEgg = round($costPerEgg * 1.30, 2);
+            $recCrate = round($costPerEgg * 30 * 1.30, 2);
 
             $speciesKey = (string) ($f['species'] ?? 'chicken');
             $speciesLabel = $profiles[$speciesKey]['label'] ?? ucfirst($speciesKey);
 
             $row = array_merge($f, [
+                'source_key' => $sKey,
+                'source_type' => 'layer',
+                'source_id' => $fid,
                 'species_label' => $speciesLabel,
                 'current_age_weeks' => $currentAgeWeeks,
                 'total_good_eggs' => $goodEggs,
@@ -2217,6 +2287,9 @@ class FarmService
                 'total_med_cost' => round($medCost, 2),
                 'total_cost' => $totalCost,
                 'cost_per_egg' => $costPerEgg,
+                'cost_per_crate' => $costPerCrate,
+                'recommended_price_per_egg' => $recEgg,
+                'recommended_price_per_crate' => $recCrate,
                 'transferred_eggs' => $transferred,
                 'sold_eggs' => $sold,
                 'available_eggs' => $available,
@@ -2227,7 +2300,9 @@ class FarmService
             ]);
 
             $enrichedFlocks[] = $row;
+            $eggSources[] = $row;
             $flockMap[$fid] = $row;
+            $sourceMap[$sKey] = $row;
 
             if (($f['status'] ?? 'Active') === 'Active') {
                 $liveLayers += $curBirds;
@@ -2237,12 +2312,99 @@ class FarmService
             $totalGoodEggsAll += $goodEggs;
             $totalCrackedEggsAll += $crackedEggs;
             $totalLayerCostAll += $totalCost;
+            $totalEggInputCostAll += ($feedCost + $medCost);
+            $totalTransferredAll += $transferred;
+        }
+
+        // Aggregate egg production from Production flocks (read raw tables to avoid recursive enrichment)
+        $prodStats = [];
+        foreach ($prodLogs as $pl) {
+            $pbId = (int) ($pl['production_batch_id'] ?? 0);
+            if ($pbId <= 0) {
+                continue;
+            }
+            if (!isset($prodStats[$pbId])) {
+                $prodStats[$pbId] = ['good' => 0, 'cracked' => 0, 'feed_cost' => 0.0, 'med_cost' => 0.0];
+            }
+            $prodStats[$pbId]['good'] += (int) ($pl['good_eggs'] ?? 0);
+            $prodStats[$pbId]['cracked'] += (int) ($pl['cracked_eggs'] ?? 0);
+            $prodStats[$pbId]['feed_cost'] += (float) ($pl['feed_cost_calculated'] ?? 0);
+            $prodStats[$pbId]['med_cost'] += (float) ($pl['med_cost_calculated'] ?? 0);
+        }
+
+        foreach ($prodBatches as $pb) {
+            $pbId = (int) ($pb['id'] ?? 0);
+            $sKey = 'production:' . $pbId;
+            $st = $prodStats[$pbId] ?? ['good' => 0, 'cracked' => 0, 'feed_cost' => 0.0, 'med_cost' => 0.0];
+            $goodEggs = $st['good'];
+            $crackedEggs = $st['cracked'];
+            $transferred = (int) ($transfersBySource[$sKey] ?? 0);
+            $sold = (int) ($salesBySource[$sKey] ?? 0);
+            if ($goodEggs <= 0 && $transferred <= 0 && $sold <= 0) {
+                continue;
+            }
+
+            $feedCost = (float) $st['feed_cost'];
+            $medCost = (float) $st['med_cost'];
+            $costPerEgg = $goodEggs > 0 ? round(($feedCost + $medCost) / $goodEggs, 2) : 0.0;
+            $costPerCrate = round($costPerEgg * 30, 2);
+            $recEgg = round($costPerEgg * 1.30, 2);
+            $recCrate = round($costPerEgg * 30 * 1.30, 2);
+
+            $startDate = (string) ($pb['start_date'] ?? date('Y-m-d'));
+            $daysSinceStart = max(0, (int) floor((strtotime(date('Y-m-d')) - strtotime($startDate)) / 86400));
+            $ageDays = max(1, (int) ($pb['initial_age_days'] ?? 1) + $daysSinceStart);
+            $ageWeeks = max(1, (int) ceil($ageDays / 7));
+
+            $speciesKey = $detectSpecies((string) ($pb['flock_type'] ?? ''));
+            $speciesLabel = $profiles[$speciesKey]['label'] ?? ucfirst($speciesKey);
+            $available = max(0, $goodEggs - $transferred - $sold);
+
+            $pSource = [
+                'id' => $pbId,
+                'source_key' => $sKey,
+                'source_type' => 'production',
+                'source_id' => $pbId,
+                'batch_code' => $pb['batch_code'],
+                'flock_name' => $pb['flock_type'],
+                'species' => $speciesKey,
+                'species_label' => $speciesLabel,
+                'current_age_weeks' => $ageWeeks,
+                'current_bird_count' => (int) ($pb['current_bird_count'] ?? 0),
+                'status' => $pb['status'] ?? 'Active',
+                'total_good_eggs' => $goodEggs,
+                'total_good_crates' => intdiv($goodEggs, 30),
+                'total_good_loose' => $goodEggs % 30,
+                'total_cracked_eggs' => $crackedEggs,
+                'total_feed_cost' => round($feedCost, 2),
+                'total_med_cost' => round($medCost, 2),
+                'cost_per_egg' => $costPerEgg,
+                'cost_per_crate' => $costPerCrate,
+                'recommended_price_per_egg' => $recEgg,
+                'recommended_price_per_crate' => $recCrate,
+                'transferred_eggs' => $transferred,
+                'sold_eggs' => $sold,
+                'available_eggs' => $available,
+                'available_crates' => intdiv($available, 30),
+                'available_loose' => $available % 30,
+            ];
+
+            $eggSources[] = $pSource;
+            $sourceMap[$sKey] = $pSource;
+
+            $totalGoodEggsAll += $goodEggs;
+            $totalCrackedEggsAll += $crackedEggs;
+            $totalEggInputCostAll += ($feedCost + $medCost);
             $totalTransferredAll += $transferred;
         }
 
         usort($enrichedFlocks, fn($a, $b) => (int) $b['id'] <=> (int) $a['id']);
 
         $globalAvailable = max(0, $totalGoodEggsAll - $totalTransferredAll - $totalSoldEggs);
+        $avgCostPerEgg = $totalGoodEggsAll > 0 ? round($totalEggInputCostAll / $totalGoodEggsAll, 2) : 0.0;
+        $avgCostPerCrate = round($avgCostPerEgg * 30, 2);
+        $avgRecEgg = round($avgCostPerEgg * 1.30, 2);
+        $avgRecCrate = round($avgCostPerEgg * 30 * 1.30, 2);
 
         $enrichedLogs = [];
         foreach ($logs as $l) {
@@ -2262,12 +2424,14 @@ class FarmService
 
         $enrichedTransfers = [];
         foreach ($transfers as $t) {
-            $fid = (int) ($t['layer_flock_id'] ?? 0);
-            $fl = $flockMap[$fid] ?? null;
+            $sKey = $resolveRowSourceKey($t);
+            $src = $sourceMap[$sKey] ?? null;
             $tEggs = (int) ($t['eggs_transferred'] ?? 0);
             $enrichedTransfers[] = array_merge($t, [
-                'flock_code' => $fl['batch_code'] ?? 'LAY',
-                'flock_name' => $fl['flock_name'] ?? 'Layer Flock',
+                'source_key' => $sKey,
+                'source_type' => $src['source_type'] ?? ($t['source_type'] ?? 'layer'),
+                'flock_code' => $src['batch_code'] ?? 'LAY',
+                'flock_name' => $src['flock_name'] ?? 'Layer Flock',
                 'crates' => intdiv($tEggs, 30),
                 'loose' => $tEggs % 30,
             ]);
@@ -2276,14 +2440,20 @@ class FarmService
 
         $enrichedSales = [];
         foreach ($sales as $s) {
-            $fid = (int) ($s['layer_flock_id'] ?? 0);
-            $fl = $fid > 0 ? ($flockMap[$fid] ?? null) : null;
+            $sKey = $resolveRowSourceKey($s);
+            $src = $sKey !== '' ? ($sourceMap[$sKey] ?? null) : null;
             $tEggs = (int) ($s['total_eggs'] ?? 0);
+            $costBasis = isset($s['cost_basis']) ? (float) $s['cost_basis'] : round($tEggs * ($src['cost_per_egg'] ?? $avgCostPerEgg), 2);
+            $estProfit = isset($s['estimated_profit']) ? (float) $s['estimated_profit'] : round((float) ($s['total_amount'] ?? 0) - $costBasis, 2);
             $enrichedSales[] = array_merge($s, [
-                'flock_code' => $fl ? $fl['batch_code'] : 'COMBINED',
-                'flock_name' => $fl ? $fl['flock_name'] : 'Combined Egg Stock',
+                'source_key' => $sKey,
+                'source_type' => $src['source_type'] ?? ($s['source_type'] ?? ($sKey === '' ? 'combined' : 'layer')),
+                'flock_code' => $src ? $src['batch_code'] : 'COMBINED',
+                'flock_name' => $src ? $src['flock_name'] : 'Combined Egg Stock',
                 'crates' => intdiv($tEggs, 30),
                 'loose' => $tEggs % 30,
+                'cost_basis' => $costBasis,
+                'estimated_profit' => $estProfit,
             ]);
         }
         usort($enrichedSales, fn($a, $b) => (int) $b['id'] <=> (int) $a['id']);
@@ -2292,6 +2462,7 @@ class FarmService
 
         return [
             'flocks' => $enrichedFlocks,
+            'egg_sources' => $eggSources,
             'collection_logs' => $enrichedLogs,
             'transfers' => $enrichedTransfers,
             'sales' => $enrichedSales,
@@ -2311,6 +2482,10 @@ class FarmService
                 'available_eggs' => $globalAvailable,
                 'available_crates' => intdiv($globalAvailable, 30),
                 'available_loose' => $globalAvailable % 30,
+                'avg_cost_per_egg' => $avgCostPerEgg,
+                'avg_cost_per_crate' => $avgCostPerCrate,
+                'avg_rec_price_per_egg' => $avgRecEgg,
+                'avg_rec_price_per_crate' => $avgRecCrate,
                 'egg_sales_billed' => round($eggSalesBilled, 2),
                 'egg_sales_collected' => round($eggSalesCollected, 2),
                 'egg_sales_receivables' => round($eggSalesReceivables, 2),
@@ -2320,38 +2495,47 @@ class FarmService
 
     public function transferEggsToIncubator(array $input): int
     {
-        $flockId = (int) ($input['layer_flock_id'] ?? 0);
+        $sourceKey = trim((string) ($input['source_key'] ?? ''));
+        if ($sourceKey === '' && !empty($input['layer_flock_id'])) {
+            $sourceKey = 'layer:' . (int) $input['layer_flock_id'];
+        }
         $overview = $this->getLayersOverview();
-        $flock = null;
-        foreach ($overview['flocks'] as $lf) {
-            if ((int) $lf['id'] === $flockId) {
-                $flock = $lf;
+        $source = null;
+        foreach ($overview['egg_sources'] as $src) {
+            if (($src['source_key'] ?? '') === $sourceKey) {
+                $source = $src;
                 break;
             }
         }
-        if (!$flock) {
-            throw new InvalidArgumentException('Selected layer flock does not exist.');
+        if (!$source) {
+            throw new InvalidArgumentException('Selected egg source flock does not exist.');
         }
 
         $eggs = (int) ($input['eggs_transferred'] ?? 0);
         if ($eggs <= 0) {
             throw new InvalidArgumentException('Number of eggs to transfer must be greater than zero.');
         }
-        $maxAvailable = min((int) $flock['available_eggs'], (int) $overview['summary']['available_eggs']);
+        $maxAvailable = min((int) $source['available_eggs'], (int) $overview['summary']['available_eggs']);
         if ($eggs > $maxAvailable) {
-            throw new InvalidArgumentException("Cannot transfer {$eggs} eggs — only {$maxAvailable} egg(s) available in stock for {$flock['batch_code']}.");
+            throw new InvalidArgumentException("Cannot transfer {$eggs} eggs — only {$maxAvailable} egg(s) available in stock for {$source['batch_code']}.");
         }
 
-        $valuation = max(0.0, (float) ($input['egg_valuation'] ?? 0));
+        $costPerEgg = (float) ($source['cost_per_egg'] ?? 0);
+        $rawVal = $input['egg_valuation'] ?? '';
+        $valuation = (is_string($rawVal) && trim($rawVal) === '') || $rawVal === null
+            ? round($eggs * $costPerEgg, 2)
+            : max(0.0, (float) $rawVal);
+
         $transferDate = !empty($input['transfer_date']) ? (string) $input['transfer_date'] : date('Y-m-d');
         $setterId = trim((string) ($input['setter_id'] ?? 'Setter A')) ?: 'Setter A';
         $notes = trim((string) ($input['notes'] ?? ''));
+        $isProd = ($source['source_type'] ?? 'layer') === 'production';
 
         $incBatchId = $this->createIncubationBatch([
-            'species' => $flock['species'],
+            'species' => $source['species'],
             'setter_id' => $setterId,
-            'parent_flock_info' => "Layer Flock: {$flock['batch_code']} ({$flock['flock_name']})",
-            'flock_age_weeks' => max(18, (int) $flock['current_age_weeks']),
+            'parent_flock_info' => ($isProd ? 'Production Flock: ' : 'Layer Flock: ') . "{$source['batch_code']} ({$source['flock_name']})",
+            'flock_age_weeks' => max(18, (int) $source['current_age_weeks']),
             'eggs_set' => $eggs,
             'egg_cost' => $valuation,
             'start_date' => $transferDate,
@@ -2362,17 +2546,21 @@ class FarmService
         $incCode = $incBatch['batch_code'] ?? ('INC-' . date('Y') . '-' . $incBatchId);
 
         $this->db->insert('egg_transfers', [
-            'layer_flock_id' => $flockId,
+            'source_key' => $source['source_key'],
+            'source_type' => $source['source_type'],
+            'layer_flock_id' => $isProd ? null : (int) $source['source_id'],
+            'production_batch_id' => $isProd ? (int) $source['source_id'] : null,
             'incubation_batch_id' => $incBatchId,
             'incubation_batch_code' => $incCode,
             'eggs_transferred' => $eggs,
             'egg_valuation' => round($valuation, 2),
+            'cost_per_egg_used' => $costPerEgg,
             'transfer_date' => $transferDate,
             'notes' => $notes,
         ]);
 
         $this->addAiMemory(
-            "Transferred {$eggs} eggs from layer flock {$flock['batch_code']} to incubator batch {$incCode} ({$setterId}).",
+            "Transferred {$eggs} eggs from {$source['batch_code']} ({$source['flock_name']}) to incubator batch {$incCode} ({$setterId}) at ₦" . number_format($valuation, 2) . ".",
             'layers'
         );
 
@@ -2382,7 +2570,10 @@ class FarmService
     public function recordEggSale(array $input): int
     {
         $overview = $this->getLayersOverview();
-        $flockId = !empty($input['layer_flock_id']) ? (int) $input['layer_flock_id'] : null;
+        $sourceKey = trim((string) ($input['source_key'] ?? ''));
+        if ($sourceKey === '' && !empty($input['layer_flock_id'])) {
+            $sourceKey = 'layer:' . (int) $input['layer_flock_id'];
+        }
         $unitMode = ($input['unit_mode'] ?? 'crates') === 'pieces' ? 'pieces' : 'crates';
         $qty = max(0.0, (float) ($input['quantity'] ?? 0));
         $totalEggs = $unitMode === 'crates' ? (int) round($qty * 30) : (int) round($qty);
@@ -2391,20 +2582,20 @@ class FarmService
             throw new InvalidArgumentException('Quantity sold must equal at least 1 egg.');
         }
 
-        $flock = null;
-        if ($flockId !== null) {
-            foreach ($overview['flocks'] as $lf) {
-                if ((int) $lf['id'] === $flockId) {
-                    $flock = $lf;
+        $source = null;
+        if ($sourceKey !== '') {
+            foreach ($overview['egg_sources'] as $src) {
+                if (($src['source_key'] ?? '') === $sourceKey) {
+                    $source = $src;
                     break;
                 }
             }
-            if (!$flock) {
-                throw new InvalidArgumentException('Selected layer flock does not exist.');
+            if (!$source) {
+                throw new InvalidArgumentException('Selected egg source flock does not exist.');
             }
-            $maxAvail = min((int) $flock['available_eggs'], (int) $overview['summary']['available_eggs']);
+            $maxAvail = min((int) $source['available_eggs'], (int) $overview['summary']['available_eggs']);
             if ($totalEggs > $maxAvail) {
-                throw new InvalidArgumentException("Cannot sell {$totalEggs} eggs — only {$maxAvail} egg(s) available for {$flock['batch_code']}.");
+                throw new InvalidArgumentException("Cannot sell {$totalEggs} eggs — only {$maxAvail} egg(s) available for {$source['batch_code']}.");
             }
         } else {
             $maxGlobal = (int) $overview['summary']['available_eggs'];
@@ -2415,6 +2606,10 @@ class FarmService
 
         $unitPrice = max(0.0, (float) ($input['unit_price'] ?? 0));
         $totalAmount = round($qty * $unitPrice, 2);
+
+        $costPerEggAtSale = (float) ($source ? $source['cost_per_egg'] : $overview['summary']['avg_cost_per_egg']);
+        $costBasis = round($totalEggs * $costPerEggAtSale, 2);
+        $estimatedProfit = round($totalAmount - $costBasis, 2);
 
         $rawStatus = (string) ($input['payment_status'] ?? 'Paid');
         if (!in_array($rawStatus, ['Paid', 'Partial', 'Credit'], true)) {
@@ -2430,8 +2625,14 @@ class FarmService
         $balanceDue = round(max(0.0, $totalAmount - $amountPaid), 2);
         $normalizedStatus = $balanceDue <= 0 ? 'Paid' : ($amountPaid > 0 ? 'Partial' : 'Credit');
 
+        $isLayer = $source && ($source['source_type'] ?? '') === 'layer';
+        $isProd = $source && ($source['source_type'] ?? '') === 'production';
+
         $saleId = $this->db->insert('egg_sales', [
-            'layer_flock_id' => $flockId,
+            'source_key' => $source ? $source['source_key'] : null,
+            'source_type' => $source ? $source['source_type'] : 'combined',
+            'layer_flock_id' => $isLayer ? (int) $source['source_id'] : null,
+            'production_batch_id' => $isProd ? (int) $source['source_id'] : null,
             'sale_date' => !empty($input['sale_date']) ? (string) $input['sale_date'] : date('Y-m-d'),
             'buyer_name' => trim((string) ($input['buyer_name'] ?? 'Walk-in Buyer')) ?: 'Walk-in Buyer',
             'buyer_phone' => trim((string) ($input['buyer_phone'] ?? '')),
@@ -2440,13 +2641,16 @@ class FarmService
             'total_eggs' => $totalEggs,
             'unit_price' => round($unitPrice, 2),
             'total_amount' => $totalAmount,
+            'cost_per_egg_at_sale' => $costPerEggAtSale,
+            'cost_basis' => $costBasis,
+            'estimated_profit' => $estimatedProfit,
             'amount_paid' => $amountPaid,
             'balance_due' => $balanceDue,
             'payment_status' => $normalizedStatus,
             'notes' => trim((string) ($input['notes'] ?? '')),
         ]);
 
-        $srcLabel = $flock ? $flock['batch_code'] : 'Combined Egg Stock';
+        $srcLabel = $source ? $source['batch_code'] : 'Combined Egg Stock';
         $this->addAiMemory(
             "Egg sale recorded from {$srcLabel}: {$totalEggs} eggs for ₦" . number_format($totalAmount, 2) . " ({$normalizedStatus}).",
             'sales'
