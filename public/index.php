@@ -106,7 +106,7 @@ $blade = new BladeEngine(
 );
 
 $currentPage = $_GET['page'] ?? 'dashboard';
-$allowedPages = ['dashboard', 'incubation', 'inventory', 'production', 'sales', 'finance', 'ai'];
+$allowedPages = ['dashboard', 'incubation', 'layers', 'eggs', 'inventory', 'production', 'sales', 'finance', 'ai'];
 if (!in_array($currentPage, $allowedPages, true)) {
     $currentPage = 'dashboard';
 }
@@ -368,9 +368,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['flash_success'] = 'Farm Manager password updated successfully.';
                 header('Location: /?page=' . urlencode($currentPage));
                 exit;
+
+            case 'create_layer_flock':
+                $farm->createLayerFlock($_POST);
+                $setFlash('flash_success', 'New layer flock added and ready for daily egg collection.');
+                header('Location: /?page=layers');
+                exit;
+
+            case 'retire_layer_flock':
+                $farm->retireLayerFlock((int) ($_POST['layer_flock_id'] ?? 0));
+                $setFlash('flash_success', 'Layer flock marked as retired.');
+                header('Location: /?page=layers');
+                exit;
+
+            case 'record_layer_daily_log':
+                $farm->recordLayerDailyLog($_POST);
+                $setFlash('flash_success', 'Daily egg collection and layer care logged to Egg Stockroom.');
+                header('Location: /?page=layers');
+                exit;
+
+            case 'transfer_eggs_to_incubator':
+                $farm->transferEggsToIncubator($_POST);
+                $setFlash('flash_success', 'Eggs transferred from stockroom and loaded as an active Incubator batch.');
+                header('Location: /?page=eggs');
+                exit;
+
+            case 'record_egg_sale':
+                $farm->recordEggSale($_POST);
+                $setFlash('flash_success', 'Egg sale recorded and deducted from Egg Stockroom.');
+                header('Location: /?page=eggs');
+                exit;
+
+            case 'record_egg_sale_payment':
+                $farm->recordEggSalePayment(
+                    (int) ($_POST['egg_sale_id'] ?? 0),
+                    (float) ($_POST['payment_amount'] ?? 0)
+                );
+                $setFlash('flash_success', 'Egg sale balance payment recorded.');
+                header('Location: /?page=eggs');
+                exit;
         }
     } catch (Throwable $e) {
-        $_SESSION['flash_error'] = $e->getMessage();
+        $setFlash('flash_error', $e->getMessage());
         header('Location: /?page=' . urlencode($currentPage));
         exit;
     }
@@ -382,6 +421,8 @@ $flashError = $consumeFlash('flash_error');
 $viewMap = [
     'dashboard' => 'dashboard.index',
     'incubation' => 'incubation.index',
+    'layers' => 'layers.index',
+    'eggs' => 'eggs.index',
     'inventory' => 'inventory.index',
     'production' => 'production.index',
     'sales' => 'sales.index',
@@ -395,6 +436,7 @@ $viewData = [
     'incubationBatches' => $farm->getIncubationBatchesEnriched(),
     'inventoryItems' => $farm->getInventoryItemsEnriched(),
     'productionBatches' => $farm->getProductionBatchesEnriched(),
+    'layersOverview' => $farm->getLayersOverview(),
     'generalRent' => $farm->getGeneralRentMetrics(),
     'generalExpenses' => $farm->getGeneralFarmExpenses(),
     'wholeFarmFinancials' => $farm->getWholeFarmFinancials(),

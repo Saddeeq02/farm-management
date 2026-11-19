@@ -1846,7 +1846,88 @@ class FarmService
             }
         }
 
-        $totalOperatingCost = round($totalProdCost + $untransferredIncCost, 2);
+        // Layers Flocks & Egg Sales integration
+        $layersOverview = $this->getLayersOverview();
+        $totalLayerOperatingCost = 0.0;
+        $layerSalesByFlock = [];
+        $unassignedEggBilled = 0.0;
+        $unassignedEggCollected = 0.0;
+        $unassignedEggDue = 0.0;
+        $unassignedEggTotalEggs = 0;
+        foreach ($layersOverview['sales'] as $es) {
+            $lfId = (int) ($es['layer_flock_id'] ?? 0);
+            $sTotal = (float) ($es['total_amount'] ?? 0);
+            $sPaid = (float) ($es['amount_paid'] ?? 0);
+            $sDue = (float) ($es['balance_due'] ?? 0);
+            if ($lfId > 0) {
+                if (!isset($layerSalesByFlock[$lfId])) {
+                    $layerSalesByFlock[$lfId] = ['billed' => 0.0, 'collected' => 0.0, 'due' => 0.0];
+                }
+                $layerSalesByFlock[$lfId]['billed'] += $sTotal;
+                $layerSalesByFlock[$lfId]['collected'] += $sPaid;
+                $layerSalesByFlock[$lfId]['due'] += $sDue;
+            } else {
+                $unassignedEggBilled += $sTotal;
+                $unassignedEggCollected += $sPaid;
+                $unassignedEggDue += $sDue;
+                $unassignedEggTotalEggs += (int) ($es['total_eggs'] ?? 0);
+            }
+        }
+
+        foreach ($layersOverview['flocks'] as $lf) {
+            $lfId = (int) $lf['id'];
+            $lfTotalCost = (float) ($lf['total_cost'] ?? 0);
+            if (($lf['status'] ?? '') === 'Active') {
+                $liveFlockAssetValue += $lfTotalCost;
+            }
+            $totalDirectDoc += (float) ($lf['purchase_cost'] ?? 0);
+            $totalFeedConsumed += (float) ($lf['total_feed_cost'] ?? 0);
+            $totalMedsVaccines += (float) ($lf['total_med_cost'] ?? 0);
+            $totalLayerOperatingCost += $lfTotalCost;
+
+            $lfBilled = round($layerSalesByFlock[$lfId]['billed'] ?? 0.0, 2);
+            $lfCollected = round($layerSalesByFlock[$lfId]['collected'] ?? 0.0, 2);
+            $lfDue = round($layerSalesByFlock[$lfId]['due'] ?? 0.0, 2);
+            $batchRows[] = [
+                'stage' => 'Layers',
+                'batch_code' => $lf['batch_code'],
+                'label' => ($lf['species_label'] ?? 'Layer') . ' • ' . $lf['flock_name'],
+                'status' => $lf['status'],
+                'units_label' => number_format((int) $lf['current_bird_count']) . ' live • ' . number_format((int) $lf['total_good_eggs']) . ' eggs',
+                'base_cost' => round((float) ($lf['purchase_cost'] ?? 0), 2),
+                'feed_med_cost' => round((float) ($lf['total_feed_cost'] ?? 0) + (float) ($lf['total_med_cost'] ?? 0), 2),
+                'overhead_other' => 0.0,
+                'total_cost' => $lfTotalCost,
+                'revenue_billed' => $lfBilled,
+                'cash_collected' => $lfCollected,
+                'receivables' => $lfDue,
+                'net_profit' => round($lfBilled - $lfTotalCost, 2),
+            ];
+        }
+
+        if ($unassignedEggBilled > 0) {
+            $batchRows[] = [
+                'stage' => 'Egg Sales',
+                'batch_code' => 'EGG-POOL',
+                'label' => 'Combined Egg Stock Sales',
+                'status' => 'Completed',
+                'units_label' => number_format($unassignedEggTotalEggs) . ' eggs sold',
+                'base_cost' => 0.0,
+                'feed_med_cost' => 0.0,
+                'overhead_other' => 0.0,
+                'total_cost' => 0.0,
+                'revenue_billed' => round($unassignedEggBilled, 2),
+                'cash_collected' => round($unassignedEggCollected, 2),
+                'receivables' => round($unassignedEggDue, 2),
+                'net_profit' => round($unassignedEggBilled, 2),
+            ];
+        }
+
+        $billedAll += (float) ($layersOverview['summary']['egg_sales_billed'] ?? 0);
+        $cashCollectedAll += (float) ($layersOverview['summary']['egg_sales_collected'] ?? 0);
+        $receivablesAll += (float) ($layersOverview['summary']['egg_sales_receivables'] ?? 0);
+
+        $totalOperatingCost = round($totalProdCost + $untransferredIncCost + $totalLayerOperatingCost, 2);
         $totalFlowAssets = round($liveFlockAssetValue + $incubatorEggAssetValue + $storeInventoryValue + $receivablesAll, 2);
         $netFarmProfit = round($billedAll - $totalOperatingCost, 2);
 
@@ -1881,16 +1962,537 @@ class FarmService
         ];
     }
 
+    public function createLayerFlock(array $input): int
+    {
+        $count = count($this->db->getTable('layer_flocks')) + 1;
+        $batchCode = trim((string) ($input['batch_code'] ?? ''));
+        if ($batchCode === '') {
+            $batchCode = sprintf('LAY-%s-%02d', date('Y'), $count);
+        }
+
+        $profiles = VeterinaryKnowledgeBase::getIncubationSpeciesProfiles();
+        $species = strtolower(trim((string) ($input['species'] ?? 'chicken')));
+        if (!isset($profiles[$species])) {
+            $species = 'chicken';
+        }
+
+        $flockName = trim((string) ($input['flock_name'] ?? ''));
+        if ($flockName === '') {
+            $flockName = $profiles[$species]['label'] . ' Layers';
+        }
+
+        $birds = max(1, (int) ($input['initial_bird_count'] ?? 100));
+        $ageWeeks = max(1, (int) ($input['age_weeks'] ?? 20));
+        $purchaseCost = max(0.0, (float) ($input['purchase_cost'] ?? 0));
+        $startDate = !empty($input['start_date']) ? (string) $input['start_date'] : date('Y-m-d');
+        $notes = trim((string) ($input['notes'] ?? ''));
+
+        $flockId = $this->db->insert('layer_flocks', [
+            'batch_code' => $batchCode,
+            'flock_name' => $flockName,
+            'species' => $species,
+            'initial_bird_count' => $birds,
+            'current_bird_count' => $birds,
+            'age_weeks' => $ageWeeks,
+            'purchase_cost' => round($purchaseCost, 2),
+            'start_date' => $startDate,
+            'status' => 'Active',
+            'notes' => $notes,
+        ]);
+
+        $this->addAiMemory(
+            "Layer flock added: {$batchCode} ({$flockName}, {$profiles[$species]['label']}) — {$birds} birds at Week {$ageWeeks}.",
+            'layers'
+        );
+
+        return $flockId;
+    }
+
+    public function retireLayerFlock(int $flockId): void
+    {
+        $flock = $this->db->findById('layer_flocks', $flockId);
+        if (!$flock) {
+            throw new InvalidArgumentException('Layer flock not found.');
+        }
+        $this->db->update('layer_flocks', $flockId, ['status' => 'Retired']);
+    }
+
+    public function recordLayerDailyLog(array $input): int
+    {
+        $flockId = (int) ($input['layer_flock_id'] ?? 0);
+        $flock = $this->db->findById('layer_flocks', $flockId);
+        if (!$flock) {
+            throw new InvalidArgumentException('Selected layer flock does not exist.');
+        }
+
+        $logDate = !empty($input['log_date']) ? (string) $input['log_date'] : date('Y-m-d');
+        $goodEggs = max(0, (int) ($input['good_eggs'] ?? 0));
+        $crackedEggs = max(0, (int) ($input['cracked_eggs'] ?? 0));
+        $mortality = max(0, (int) ($input['mortality_count'] ?? 0));
+        $notes = trim((string) ($input['notes'] ?? ''));
+
+        $feedItemId = !empty($input['feed_item_id']) ? (int) $input['feed_item_id'] : null;
+        $rawFeedQty = max(0.0, (float) ($input['feed_qty'] ?? 0));
+        $feedUnit = ($input['feed_unit'] ?? 'kg') === 'g' ? 'g' : 'kg';
+        $feedGrams = ($feedUnit === 'kg') ? ($rawFeedQty * 1000.0) : $rawFeedQty;
+        $feedCostCalculated = 0.0;
+        if ($feedItemId && $feedGrams > 0) {
+            $feedItem = $this->db->findById('inventory_items', $feedItemId);
+            if ($feedItem) {
+                $unitCost = (float) ($feedItem['unit_cost_per_g_or_ml'] ?? 0);
+                $feedCostCalculated = round($feedGrams * $unitCost, 2);
+                $newRem = max(0.0, (float) ($feedItem['total_quantity_g_or_ml'] ?? 0) - $feedGrams);
+                $this->db->update('inventory_items', $feedItemId, [
+                    'total_quantity_g_or_ml' => round($newRem, 2),
+                ]);
+            }
+        }
+
+        $medDose = 0.0;
+        $medCostCalculated = 0.0;
+        $medicationsUsed = [];
+        $checkedMedIds = isset($input['med_items']) && is_array($input['med_items']) ? $input['med_items'] : [];
+        $medDosesMap = isset($input['med_doses']) && is_array($input['med_doses']) ? $input['med_doses'] : [];
+        foreach ($checkedMedIds as $rawId) {
+            $id = (int) $rawId;
+            $dose = max(0.0, (float) ($medDosesMap[$id] ?? $medDosesMap[(string) $id] ?? 0));
+            if ($id > 0 && $dose > 0) {
+                $medItem = $this->db->findById('inventory_items', $id);
+                if ($medItem) {
+                    $unitCost = (float) ($medItem['unit_cost_per_g_or_ml'] ?? 0);
+                    $cost = round($dose * $unitCost, 2);
+                    $newRem = max(0.0, (float) ($medItem['total_quantity_g_or_ml'] ?? 0) - $dose);
+                    $this->db->update('inventory_items', $id, [
+                        'total_quantity_g_or_ml' => round($newRem, 2),
+                    ]);
+                    $medicationsUsed[] = [
+                        'item_id' => $id,
+                        'item_name' => $medItem['item_name'],
+                        'dose' => $dose,
+                        'unit' => $medItem['unit_type'] ?? 'ml',
+                        'cost' => $cost,
+                    ];
+                    $medDose += $dose;
+                    $medCostCalculated += $cost;
+                }
+            }
+        }
+        $medCostCalculated = round($medCostCalculated, 2);
+
+        $logId = $this->db->insert('egg_collection_logs', [
+            'layer_flock_id' => $flockId,
+            'log_date' => $logDate,
+            'good_eggs' => $goodEggs,
+            'cracked_eggs' => $crackedEggs,
+            'mortality_count' => $mortality,
+            'feed_item_id' => $feedItemId,
+            'feed_grams' => round($feedGrams, 2),
+            'feed_cost_calculated' => $feedCostCalculated,
+            'med_dose_g_ml' => round($medDose, 2),
+            'med_cost_calculated' => $medCostCalculated,
+            'medications_used' => $medicationsUsed,
+            'notes' => $notes,
+        ]);
+
+        if ($mortality > 0) {
+            $newCount = max(0, (int) ($flock['current_bird_count'] ?? 0) - $mortality);
+            $this->db->update('layer_flocks', $flockId, [
+                'current_bird_count' => $newCount,
+            ]);
+        }
+
+        if ($goodEggs > 0 || $mortality > 0) {
+            $this->addAiMemory(
+                "Layer log for {$flock['batch_code']} ({$flock['flock_name']}) on {$logDate}: {$goodEggs} good eggs collected, {$crackedEggs} cracked, {$mortality} mortality.",
+                'layers'
+            );
+        }
+
+        return $logId;
+    }
+
+    public function getLayersOverview(): array
+    {
+        $flocks = $this->db->getTable('layer_flocks');
+        $logs = $this->db->getTable('egg_collection_logs');
+        $transfers = $this->db->getTable('egg_transfers');
+        $sales = $this->db->getTable('egg_sales');
+        $invItems = $this->db->getTable('inventory_items');
+        $profiles = VeterinaryKnowledgeBase::getIncubationSpeciesProfiles();
+
+        $invById = [];
+        foreach ($invItems as $it) {
+            $invById[(int) $it['id']] = $it;
+        }
+
+        $logsByFlock = [];
+        foreach ($logs as $l) {
+            $fid = (int) ($l['layer_flock_id'] ?? 0);
+            $logsByFlock[$fid][] = $l;
+        }
+
+        $transfersByFlock = [];
+        foreach ($transfers as $t) {
+            $fid = (int) ($t['layer_flock_id'] ?? 0);
+            $transfersByFlock[$fid] = ($transfersByFlock[$fid] ?? 0) + (int) ($t['eggs_transferred'] ?? 0);
+        }
+
+        $salesByFlock = [];
+        $unassignedSoldEggs = 0;
+        $totalSoldEggs = 0;
+        $eggSalesBilled = 0.0;
+        $eggSalesCollected = 0.0;
+        $eggSalesReceivables = 0.0;
+
+        foreach ($sales as $s) {
+            $fid = (int) ($s['layer_flock_id'] ?? 0);
+            $tEggs = (int) ($s['total_eggs'] ?? 0);
+            $totalSoldEggs += $tEggs;
+            if ($fid > 0) {
+                $salesByFlock[$fid] = ($salesByFlock[$fid] ?? 0) + $tEggs;
+            } else {
+                $unassignedSoldEggs += $tEggs;
+            }
+            $eggSalesBilled += (float) ($s['total_amount'] ?? 0);
+            $eggSalesCollected += (float) ($s['amount_paid'] ?? 0);
+            $eggSalesReceivables += (float) ($s['balance_due'] ?? 0);
+        }
+
+        $flockMap = [];
+        $enrichedFlocks = [];
+        $liveLayers = 0;
+        $activeFlockCount = 0;
+        $totalGoodEggsAll = 0;
+        $totalCrackedEggsAll = 0;
+        $totalLayerCostAll = 0.0;
+        $totalTransferredAll = 0;
+        $weightedLayRateSum = 0.0;
+
+        foreach ($flocks as $f) {
+            $fid = (int) $f['id'];
+            $fLogs = $logsByFlock[$fid] ?? [];
+            usort($fLogs, fn($a, $b) => strcmp((string) ($b['log_date'] ?? ''), (string) ($a['log_date'] ?? '')) ?: ((int) $b['id'] <=> (int) $a['id']));
+
+            $goodEggs = 0;
+            $crackedEggs = 0;
+            $mortality = 0;
+            $feedCost = 0.0;
+            $medCost = 0.0;
+            foreach ($fLogs as $fl) {
+                $goodEggs += (int) ($fl['good_eggs'] ?? 0);
+                $crackedEggs += (int) ($fl['cracked_eggs'] ?? 0);
+                $mortality += (int) ($fl['mortality_count'] ?? 0);
+                $feedCost += (float) ($fl['feed_cost_calculated'] ?? 0);
+                $medCost += (float) ($fl['med_cost_calculated'] ?? 0);
+            }
+
+            $curBirds = (int) ($f['current_bird_count'] ?? 0);
+            $latestGood = !empty($fLogs) ? (int) ($fLogs[0]['good_eggs'] ?? 0) : 0;
+            $latestLayRate = $curBirds > 0 && !empty($fLogs) ? round(($latestGood / $curBirds) * 100, 1) : 0.0;
+
+            $startDate = (string) ($f['start_date'] ?? date('Y-m-d'));
+            $daysElapsed = max(0, (int) floor((strtotime(date('Y-m-d')) - strtotime($startDate)) / 86400));
+            $currentAgeWeeks = (int) ($f['age_weeks'] ?? 20) + (int) floor($daysElapsed / 7);
+
+            $transferred = (int) ($transfersByFlock[$fid] ?? 0);
+            $sold = (int) ($salesByFlock[$fid] ?? 0);
+            $available = max(0, $goodEggs - $transferred - $sold);
+
+            $purchaseCost = (float) ($f['purchase_cost'] ?? 0);
+            $totalCost = round($purchaseCost + $feedCost + $medCost, 2);
+            $costPerEgg = $goodEggs > 0 ? round(($feedCost + $medCost) / $goodEggs, 2) : 0.0;
+
+            $speciesKey = (string) ($f['species'] ?? 'chicken');
+            $speciesLabel = $profiles[$speciesKey]['label'] ?? ucfirst($speciesKey);
+
+            $row = array_merge($f, [
+                'species_label' => $speciesLabel,
+                'current_age_weeks' => $currentAgeWeeks,
+                'total_good_eggs' => $goodEggs,
+                'total_good_crates' => intdiv($goodEggs, 30),
+                'total_good_loose' => $goodEggs % 30,
+                'total_cracked_eggs' => $crackedEggs,
+                'total_mortality' => $mortality,
+                'total_feed_cost' => round($feedCost, 2),
+                'total_med_cost' => round($medCost, 2),
+                'total_cost' => $totalCost,
+                'cost_per_egg' => $costPerEgg,
+                'transferred_eggs' => $transferred,
+                'sold_eggs' => $sold,
+                'available_eggs' => $available,
+                'available_crates' => intdiv($available, 30),
+                'available_loose' => $available % 30,
+                'latest_laying_rate_pct' => $latestLayRate,
+                'log_count' => count($fLogs),
+            ]);
+
+            $enrichedFlocks[] = $row;
+            $flockMap[$fid] = $row;
+
+            if (($f['status'] ?? 'Active') === 'Active') {
+                $liveLayers += $curBirds;
+                $activeFlockCount++;
+                $weightedLayRateSum += ($latestLayRate * $curBirds);
+            }
+            $totalGoodEggsAll += $goodEggs;
+            $totalCrackedEggsAll += $crackedEggs;
+            $totalLayerCostAll += $totalCost;
+            $totalTransferredAll += $transferred;
+        }
+
+        usort($enrichedFlocks, fn($a, $b) => (int) $b['id'] <=> (int) $a['id']);
+
+        $globalAvailable = max(0, $totalGoodEggsAll - $totalTransferredAll - $totalSoldEggs);
+
+        $enrichedLogs = [];
+        foreach ($logs as $l) {
+            $fid = (int) ($l['layer_flock_id'] ?? 0);
+            $fl = $flockMap[$fid] ?? null;
+            $fItem = !empty($l['feed_item_id']) ? ($invById[(int) $l['feed_item_id']] ?? null) : null;
+            $good = (int) ($l['good_eggs'] ?? 0);
+            $enrichedLogs[] = array_merge($l, [
+                'flock_code' => $fl['batch_code'] ?? 'LAY',
+                'flock_name' => $fl['flock_name'] ?? 'Layer Flock',
+                'good_crates' => intdiv($good, 30),
+                'good_loose' => $good % 30,
+                'feed_item_name' => $fItem['item_name'] ?? null,
+            ]);
+        }
+        usort($enrichedLogs, fn($a, $b) => (int) $b['id'] <=> (int) $a['id']);
+
+        $enrichedTransfers = [];
+        foreach ($transfers as $t) {
+            $fid = (int) ($t['layer_flock_id'] ?? 0);
+            $fl = $flockMap[$fid] ?? null;
+            $tEggs = (int) ($t['eggs_transferred'] ?? 0);
+            $enrichedTransfers[] = array_merge($t, [
+                'flock_code' => $fl['batch_code'] ?? 'LAY',
+                'flock_name' => $fl['flock_name'] ?? 'Layer Flock',
+                'crates' => intdiv($tEggs, 30),
+                'loose' => $tEggs % 30,
+            ]);
+        }
+        usort($enrichedTransfers, fn($a, $b) => (int) $b['id'] <=> (int) $a['id']);
+
+        $enrichedSales = [];
+        foreach ($sales as $s) {
+            $fid = (int) ($s['layer_flock_id'] ?? 0);
+            $fl = $fid > 0 ? ($flockMap[$fid] ?? null) : null;
+            $tEggs = (int) ($s['total_eggs'] ?? 0);
+            $enrichedSales[] = array_merge($s, [
+                'flock_code' => $fl ? $fl['batch_code'] : 'COMBINED',
+                'flock_name' => $fl ? $fl['flock_name'] : 'Combined Egg Stock',
+                'crates' => intdiv($tEggs, 30),
+                'loose' => $tEggs % 30,
+            ]);
+        }
+        usort($enrichedSales, fn($a, $b) => (int) $b['id'] <=> (int) $a['id']);
+
+        $avgLayRate = $liveLayers > 0 ? round($weightedLayRateSum / $liveLayers, 1) : 0.0;
+
+        return [
+            'flocks' => $enrichedFlocks,
+            'collection_logs' => $enrichedLogs,
+            'transfers' => $enrichedTransfers,
+            'sales' => $enrichedSales,
+            'summary' => [
+                'live_layers' => $liveLayers,
+                'active_flock_count' => $activeFlockCount,
+                'avg_laying_rate_pct' => $avgLayRate,
+                'total_good_eggs' => $totalGoodEggsAll,
+                'total_good_crates' => intdiv($totalGoodEggsAll, 30),
+                'total_good_loose' => $totalGoodEggsAll % 30,
+                'total_cracked_eggs' => $totalCrackedEggsAll,
+                'total_layer_cost' => round($totalLayerCostAll, 2),
+                'total_transferred_eggs' => $totalTransferredAll,
+                'transfer_batch_count' => count($enrichedTransfers),
+                'total_sold_eggs' => $totalSoldEggs,
+                'unassigned_sold_eggs' => $unassignedSoldEggs,
+                'available_eggs' => $globalAvailable,
+                'available_crates' => intdiv($globalAvailable, 30),
+                'available_loose' => $globalAvailable % 30,
+                'egg_sales_billed' => round($eggSalesBilled, 2),
+                'egg_sales_collected' => round($eggSalesCollected, 2),
+                'egg_sales_receivables' => round($eggSalesReceivables, 2),
+            ],
+        ];
+    }
+
+    public function transferEggsToIncubator(array $input): int
+    {
+        $flockId = (int) ($input['layer_flock_id'] ?? 0);
+        $overview = $this->getLayersOverview();
+        $flock = null;
+        foreach ($overview['flocks'] as $lf) {
+            if ((int) $lf['id'] === $flockId) {
+                $flock = $lf;
+                break;
+            }
+        }
+        if (!$flock) {
+            throw new InvalidArgumentException('Selected layer flock does not exist.');
+        }
+
+        $eggs = (int) ($input['eggs_transferred'] ?? 0);
+        if ($eggs <= 0) {
+            throw new InvalidArgumentException('Number of eggs to transfer must be greater than zero.');
+        }
+        $maxAvailable = min((int) $flock['available_eggs'], (int) $overview['summary']['available_eggs']);
+        if ($eggs > $maxAvailable) {
+            throw new InvalidArgumentException("Cannot transfer {$eggs} eggs — only {$maxAvailable} egg(s) available in stock for {$flock['batch_code']}.");
+        }
+
+        $valuation = max(0.0, (float) ($input['egg_valuation'] ?? 0));
+        $transferDate = !empty($input['transfer_date']) ? (string) $input['transfer_date'] : date('Y-m-d');
+        $setterId = trim((string) ($input['setter_id'] ?? 'Setter A')) ?: 'Setter A';
+        $notes = trim((string) ($input['notes'] ?? ''));
+
+        $incBatchId = $this->createIncubationBatch([
+            'species' => $flock['species'],
+            'setter_id' => $setterId,
+            'parent_flock_info' => "Layer Flock: {$flock['batch_code']} ({$flock['flock_name']})",
+            'flock_age_weeks' => max(18, (int) $flock['current_age_weeks']),
+            'eggs_set' => $eggs,
+            'egg_cost' => $valuation,
+            'start_date' => $transferDate,
+            'ownership_type' => 'Farm',
+        ]);
+
+        $incBatch = $this->db->findById('incubation_batches', $incBatchId);
+        $incCode = $incBatch['batch_code'] ?? ('INC-' . date('Y') . '-' . $incBatchId);
+
+        $this->db->insert('egg_transfers', [
+            'layer_flock_id' => $flockId,
+            'incubation_batch_id' => $incBatchId,
+            'incubation_batch_code' => $incCode,
+            'eggs_transferred' => $eggs,
+            'egg_valuation' => round($valuation, 2),
+            'transfer_date' => $transferDate,
+            'notes' => $notes,
+        ]);
+
+        $this->addAiMemory(
+            "Transferred {$eggs} eggs from layer flock {$flock['batch_code']} to incubator batch {$incCode} ({$setterId}).",
+            'layers'
+        );
+
+        return $incBatchId;
+    }
+
+    public function recordEggSale(array $input): int
+    {
+        $overview = $this->getLayersOverview();
+        $flockId = !empty($input['layer_flock_id']) ? (int) $input['layer_flock_id'] : null;
+        $unitMode = ($input['unit_mode'] ?? 'crates') === 'pieces' ? 'pieces' : 'crates';
+        $qty = max(0.0, (float) ($input['quantity'] ?? 0));
+        $totalEggs = $unitMode === 'crates' ? (int) round($qty * 30) : (int) round($qty);
+
+        if ($totalEggs <= 0) {
+            throw new InvalidArgumentException('Quantity sold must equal at least 1 egg.');
+        }
+
+        $flock = null;
+        if ($flockId !== null) {
+            foreach ($overview['flocks'] as $lf) {
+                if ((int) $lf['id'] === $flockId) {
+                    $flock = $lf;
+                    break;
+                }
+            }
+            if (!$flock) {
+                throw new InvalidArgumentException('Selected layer flock does not exist.');
+            }
+            $maxAvail = min((int) $flock['available_eggs'], (int) $overview['summary']['available_eggs']);
+            if ($totalEggs > $maxAvail) {
+                throw new InvalidArgumentException("Cannot sell {$totalEggs} eggs — only {$maxAvail} egg(s) available for {$flock['batch_code']}.");
+            }
+        } else {
+            $maxGlobal = (int) $overview['summary']['available_eggs'];
+            if ($totalEggs > $maxGlobal) {
+                throw new InvalidArgumentException("Cannot sell {$totalEggs} eggs — only {$maxGlobal} egg(s) available in stock.");
+            }
+        }
+
+        $unitPrice = max(0.0, (float) ($input['unit_price'] ?? 0));
+        $totalAmount = round($qty * $unitPrice, 2);
+
+        $rawStatus = (string) ($input['payment_status'] ?? 'Paid');
+        if (!in_array($rawStatus, ['Paid', 'Partial', 'Credit'], true)) {
+            $rawStatus = 'Paid';
+        }
+        if ($rawStatus === 'Paid') {
+            $amountPaid = $totalAmount;
+        } elseif ($rawStatus === 'Credit') {
+            $amountPaid = 0.0;
+        } else {
+            $amountPaid = round(min($totalAmount, max(0.0, (float) ($input['amount_paid'] ?? 0))), 2);
+        }
+        $balanceDue = round(max(0.0, $totalAmount - $amountPaid), 2);
+        $normalizedStatus = $balanceDue <= 0 ? 'Paid' : ($amountPaid > 0 ? 'Partial' : 'Credit');
+
+        $saleId = $this->db->insert('egg_sales', [
+            'layer_flock_id' => $flockId,
+            'sale_date' => !empty($input['sale_date']) ? (string) $input['sale_date'] : date('Y-m-d'),
+            'buyer_name' => trim((string) ($input['buyer_name'] ?? 'Walk-in Buyer')) ?: 'Walk-in Buyer',
+            'buyer_phone' => trim((string) ($input['buyer_phone'] ?? '')),
+            'unit_mode' => $unitMode,
+            'quantity' => round($qty, 2),
+            'total_eggs' => $totalEggs,
+            'unit_price' => round($unitPrice, 2),
+            'total_amount' => $totalAmount,
+            'amount_paid' => $amountPaid,
+            'balance_due' => $balanceDue,
+            'payment_status' => $normalizedStatus,
+            'notes' => trim((string) ($input['notes'] ?? '')),
+        ]);
+
+        $srcLabel = $flock ? $flock['batch_code'] : 'Combined Egg Stock';
+        $this->addAiMemory(
+            "Egg sale recorded from {$srcLabel}: {$totalEggs} eggs for ₦" . number_format($totalAmount, 2) . " ({$normalizedStatus}).",
+            'sales'
+        );
+
+        return $saleId;
+    }
+
+    public function recordEggSalePayment(int $saleId, float $paymentAmount): void
+    {
+        $sale = $this->db->findById('egg_sales', $saleId);
+        if (!$sale) {
+            throw new InvalidArgumentException('Egg sale record not found.');
+        }
+        $paymentAmount = round(max(0.0, $paymentAmount), 2);
+        if ($paymentAmount <= 0) {
+            throw new InvalidArgumentException('Payment amount must be greater than zero.');
+        }
+        $totalAmount = (float) ($sale['total_amount'] ?? 0);
+        $currentPaid = (float) ($sale['amount_paid'] ?? 0);
+        $newPaid = round(min($totalAmount, $currentPaid + $paymentAmount), 2);
+        $newBalance = round(max(0.0, $totalAmount - $newPaid), 2);
+        $newStatus = $newBalance <= 0 ? 'Paid' : ($newPaid > 0 ? 'Partial' : 'Credit');
+
+        $this->db->update('egg_sales', $saleId, [
+            'amount_paid' => $newPaid,
+            'balance_due' => $newBalance,
+            'payment_status' => $newStatus,
+        ]);
+    }
+
     public function exportFullBackup(): array
     {
         $tables = [
             'incubation_batches',
             'incubation_daily_logs',
             'incubation_expenses',
+            'hatch_breakouts',
             'inventory_items',
             'production_batches',
             'production_daily_logs',
             'batch_sales',
+            'layer_flocks',
+            'egg_collection_logs',
+            'egg_transfers',
+            'egg_sales',
             'general_farm_expenses',
             'fixed_assets',
             'farm_ai_knowledge_memory',
