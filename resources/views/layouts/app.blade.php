@@ -664,7 +664,7 @@
           </div>
           <div>
             <label class="block text-slate-700 dark:text-slate-300 mb-1">Water Intake (Liters)</label>
-            <input type="number" step="0.1" name="water_liters" placeholder="e.g. 350" value="350" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-cyan-600 dark:text-cyan-400 font-bold outline-none focus:border-cyan-500">
+            <input type="number" step="any" min="0" name="water_liters" placeholder="e.g. 350" value="350" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-cyan-600 dark:text-cyan-400 font-bold outline-none focus:border-cyan-500">
           </div>
         </div>
 
@@ -693,7 +693,7 @@
           </div>
           <div>
             <label class="block text-slate-700 dark:text-slate-300 mb-1">Feed Consumed (Grams)</label>
-            <input type="number" step="1" name="feed_grams" placeholder="e.g. 150000" value="0" min="0" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-emerald-600 dark:text-emerald-400 font-bold outline-none focus:border-emerald-500">
+            <input type="number" step="any" name="feed_grams" placeholder="e.g. 150000" value="0" min="0" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-emerald-600 dark:text-emerald-400 font-bold outline-none focus:border-emerald-500">
           </div>
         </div>
 
@@ -713,7 +713,7 @@
                   </span>
                 </label>
                 <div class="flex items-center gap-1 shrink-0">
-                  <input type="number" step="0.1" min="0" name="med_doses[{{ $item['id'] }}]" placeholder="Dose" disabled
+                  <input type="number" step="any" min="0" name="med_doses[{{ $item['id'] }}]" placeholder="Dose" disabled
                          class="w-20 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-purple-600 dark:text-purple-300 px-2 py-1 text-[11px] font-mono outline-none disabled:opacity-40">
                   <span class="text-[10px] font-mono text-slate-500">{{ $item['unit_label'] }}</span>
                 </div>

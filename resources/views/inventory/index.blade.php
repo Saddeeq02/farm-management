@@ -189,7 +189,7 @@
                 <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
                     <div>
                         <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Quantity Purchased</label>
-                        <input type="number" step="0.01" name="quantity_value" id="invQtyValue" value="50" min="0.01" required
+                        <input type="number" step="any" name="quantity_value" id="invQtyValue" value="50" min="0.0001" required
                                oninput="recalculateUnitCostPreview()"
                                class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3.5 py-2 text-sm font-mono focus:border-emerald-500 focus:outline-none">
                     </div>
@@ -275,6 +275,7 @@
                         <th class="py-3.5 px-4 text-right">Purchase Cost</th>
                         <th class="py-3.5 px-4 text-right">Exact Unit Cost</th>
                         <th class="py-3.5 px-5 text-right">Remaining Asset Value</th>
+                        <th class="py-3.5 px-4 text-right">Action</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-200/70 dark:divide-slate-800/70 text-sm">
@@ -282,7 +283,7 @@
                         <tr class="hover:bg-white/40 dark:hover:bg-slate-800/30 transition">
                             <td class="py-4 px-5">
                                 <div class="font-semibold text-slate-900 dark:text-white">{{ $item['item_name'] }}</div>
-                                <div class="text-xs text-slate-500 dark:text-slate-400">Purchased {{ $item['purchase_date'] ?? '2026-10-15' }} • Consumed: {{ number_format($item['total_consumed']) }} {{ $item['unit_label'] }}</div>
+                                <div class="text-xs text-slate-500 dark:text-slate-400">Purchased {{ $item['purchase_date'] ?? '2026-10-15' }} • Consumed: {{ \App\Core\FarmService::fmtQty((float)$item['total_consumed']) }} {{ $item['unit_label'] }}</div>
                             </td>
                             <td class="py-4 px-4">
                                 <span class="px-2.5 py-1 rounded-full text-xs font-semibold uppercase {{ $item['category'] === 'medicine' ? 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30' : ($item['category'] === 'starter' ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30' : ($item['category'] === 'grower' ? 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30' : 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30')) }}">
@@ -290,15 +291,15 @@
                                 </span>
                             </td>
                             <td class="py-4 px-4 text-right font-mono text-slate-700 dark:text-slate-300">
-                                {{ number_format((float)($item['initial_quantity_g_or_ml'] ?? $item['total_quantity_g_or_ml'])) }} {{ $item['unit_label'] }}
-                                <div class="text-[11px] text-slate-500 dark:text-slate-400">({{ $item['initial_bulk'] }} {{ $item['bulk_unit_label'] }})</div>
+                                {{ \App\Core\FarmService::fmtQty((float)($item['initial_quantity_g_or_ml'] ?? $item['total_quantity_g_or_ml'])) }} {{ $item['unit_label'] }}
+                                <div class="text-[11px] text-slate-500 dark:text-slate-400">({{ \App\Core\FarmService::fmtQty((float)$item['initial_bulk']) }} {{ $item['bulk_unit_label'] }})</div>
                             </td>
                             <td class="py-4 px-4 text-right font-mono">
-                                <div class="font-semibold text-slate-900 dark:text-white">{{ number_format((float)$item['total_quantity_g_or_ml']) }} {{ $item['unit_label'] }}</div>
+                                <div class="font-semibold text-slate-900 dark:text-white">{{ \App\Core\FarmService::fmtQty((float)$item['total_quantity_g_or_ml']) }} {{ $item['unit_label'] }}</div>
                                 <div class="w-28 ml-auto mt-1 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                                     <div class="h-full {{ $item['low_stock'] ? 'bg-rose-500' : 'bg-emerald-500' }}" style="width: {{ $item['stock_pct'] }}%"></div>
                                 </div>
-                                <div class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{{ $item['remaining_bulk'] }} {{ $item['bulk_unit_label'] }} ({{ $item['stock_pct'] }}%)</div>
+                                <div class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{{ \App\Core\FarmService::fmtQty((float)$item['remaining_bulk']) }} {{ $item['bulk_unit_label'] }} ({{ $item['stock_pct'] }}%)</div>
                             </td>
                             <td class="py-4 px-4 text-right font-mono text-slate-700 dark:text-slate-300">
                                 ₦{{ number_format((float)$item['total_cost'], 2) }}
@@ -312,6 +313,12 @@
                             <td class="py-4 px-5 text-right font-mono font-semibold text-slate-900 dark:text-white">
                                 ₦{{ number_format($item['remaining_value'], 2) }}
                             </td>
+                            <td class="py-4 px-4 text-right whitespace-nowrap">
+                                <button type="button" onclick="openEditInventoryModal({{ (int)$item['id'] }})"
+                                        class="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-sans font-semibold transition cursor-pointer">
+                                    <i class="fa-solid fa-pen"></i> Edit
+                                </button>
+                            </td>
                         </tr>
                     @endforeach
                 </tbody>
@@ -319,4 +326,126 @@
         </div>
     </div>
 </div>
+
+<!-- MODAL: EDIT INVENTORY ITEM -->
+<div id="editInventoryItemModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md hidden opacity-0 transition-opacity duration-300">
+    <div id="editInventoryItemModalBox" class="glass-card max-w-lg w-full max-h-[90vh] overflow-y-auto rounded-3xl p-6 sm:p-7 border border-amber-500/40 relative transform scale-95 transition-transform duration-300">
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center">
+                    <i class="fa-solid fa-pen-to-square"></i>
+                </div>
+                <div>
+                    <h3 class="text-base font-bold text-slate-900 dark:text-white">Edit Inventory Product</h3>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400">Adjust stock quantities, purchase price, or unit; recalculates exact unit cost.</p>
+                </div>
+            </div>
+            <button type="button" onclick="closeModal('editInventoryItemModal')" class="text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <form method="POST" action="/?page=inventory" class="space-y-3.5 text-xs">
+            @csrf
+            <input type="hidden" name="action" value="update_inventory_item">
+            <input type="hidden" name="inventory_item_id" id="editInvItemId">
+
+            <div>
+                <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Item / Brand Name</label>
+                <input type="text" name="item_name" id="editInvName" required
+                       class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs focus:border-amber-500 focus:outline-none">
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Category</label>
+                    <select name="category" id="editInvCategory"
+                            class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs focus:border-amber-500 focus:outline-none">
+                        <option value="starter">Feed — Starter</option>
+                        <option value="grower">Feed — Grower</option>
+                        <option value="layer">Feed — Finisher / Layer</option>
+                        <option value="medicine">Medication / Vaccine</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Base Unit Type</label>
+                    <select name="unit_type" id="editInvUnitType"
+                            class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-amber-500 focus:outline-none">
+                        <option value="g">g (Grams)</option>
+                        <option value="ml">ml (Milliliters)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Initial Base Qty (g / ml)</label>
+                    <input type="number" step="any" min="0.0001" name="initial_quantity_g_or_ml" id="editInvInitialQty" required
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-amber-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Remaining Base Qty (g / ml)</label>
+                    <input type="number" step="any" min="0" name="total_quantity_g_or_ml" id="editInvRemQty" required
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-amber-500 focus:outline-none">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Total Purchase Price (₦)</label>
+                    <input type="number" step="any" min="0" name="total_cost" id="editInvTotalCost" required
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-amber-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Purchase Date</label>
+                    <input type="date" name="purchase_date" id="editInvPurchaseDate" required
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-amber-500 focus:outline-none">
+                </div>
+            </div>
+
+            <div class="pt-2 flex items-center justify-end gap-2.5">
+                <button type="button" onclick="closeModal('editInventoryItemModal')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold cursor-pointer">
+                    Cancel
+                </button>
+                <button type="submit" class="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-mono font-bold shadow-md cursor-pointer">
+                    Save Product Changes
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+window.invItemsEditMap = <?php
+$invEditMap = [];
+foreach ($inventoryItems ?? [] as $_it) {
+    $itId = (int) ($_it['id'] ?? 0);
+    $invEditMap[$itId] = [
+        'id' => $itId,
+        'item_name' => $_it['item_name'] ?? '',
+        'category' => $_it['category'] ?? 'starter',
+        'unit_type' => (($_it['unit_type'] ?? 'g') === 'ml') ? 'ml' : 'g',
+        'initial_quantity_g_or_ml' => (float) ($_it['initial_quantity_g_or_ml'] ?? ($_it['total_quantity_g_or_ml'] ?? 0)),
+        'total_quantity_g_or_ml' => (float) ($_it['total_quantity_g_or_ml'] ?? 0),
+        'total_cost' => (float) ($_it['total_cost'] ?? 0),
+        'purchase_date' => $_it['purchase_date'] ?? date('Y-m-d'),
+    ];
+}
+echo json_encode($invEditMap, JSON_UNESCAPED_UNICODE);
+?>;
+
+function openEditInventoryModal(itemId) {
+    const it = window.invItemsEditMap[String(itemId)] || window.invItemsEditMap[itemId];
+    if (!it) return;
+    document.getElementById('editInvItemId').value = it.id;
+    document.getElementById('editInvName').value = it.item_name || '';
+    document.getElementById('editInvCategory').value = it.category || 'starter';
+    document.getElementById('editInvUnitType').value = it.unit_type || 'g';
+    document.getElementById('editInvInitialQty').value = it.initial_quantity_g_or_ml ?? 0;
+    document.getElementById('editInvRemQty').value = it.total_quantity_g_or_ml ?? 0;
+    document.getElementById('editInvTotalCost').value = it.total_cost ?? 0;
+    document.getElementById('editInvPurchaseDate').value = it.purchase_date || '';
+    openModal('editInventoryItemModal');
+}
+</script>
 @endsection

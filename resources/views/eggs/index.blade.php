@@ -462,7 +462,7 @@
                 </div>
                 <div>
                     <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Quantity</label>
-                    <input type="number" step="0.5" min="0.5" name="quantity" id="sellEggQty" value="1" oninput="updateEggSalePreview()" required
+                    <input type="number" step="any" min="0.0001" name="quantity" id="sellEggQty" value="1" oninput="updateEggSalePreview()" required
                            class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 font-mono outline-none focus:border-cyan-500">
                 </div>
                 <div>

@@ -222,15 +222,15 @@ class FarmService
         $enriched = [];
         foreach ($items as $item) {
             $id = (int) $item['id'];
-            $initial = max(1.0, (float) ($item['initial_quantity_g_or_ml'] ?? $item['total_quantity_g_or_ml']));
+            $initial = max(0.0001, (float) ($item['initial_quantity_g_or_ml'] ?? $item['total_quantity_g_or_ml']));
             $remaining = (float) $item['total_quantity_g_or_ml'];
             $unitCost = (float) $item['unit_cost_per_g_or_ml'];
             $stockPct = min(100.0, max(0.0, round(($remaining / $initial) * 100, 1)));
 
             $isFeed = in_array($item['category'], ['starter', 'grower', 'layer'], true);
             $unitLabel = $isFeed ? 'g' : ($item['unit_type'] ?? 'ml');
-            $remainingKgOrL = round($remaining / 1000, 2);
-            $initialKgOrL = round($initial / 1000, 2);
+            $remainingKgOrL = round($remaining / 1000, 4);
+            $initialKgOrL = round($initial / 1000, 4);
             $remainingValue = round($remaining * $unitCost, 2);
 
             $item['unit_label'] = $unitLabel;
@@ -352,7 +352,7 @@ class FarmService
                 $batchLogs[$idx]['feed_category'] = $feedItem['category'] ?? null;
                 if (!empty($log['medications_used']) && is_array($log['medications_used'])) {
                     $medLabels = array_map(
-                        fn($mu) => $mu['item_name'] . ' (' . number_format((float) $mu['dose']) . ($mu['unit'] ?? 'ml') . ')',
+                        fn($mu) => $mu['item_name'] . ' (' . self::fmtQty((float) $mu['dose']) . ($mu['unit'] ?? 'ml') . ')',
                         $log['medications_used']
                     );
                     $batchLogs[$idx]['med_item_name'] = implode(', ', $medLabels);
@@ -465,7 +465,7 @@ class FarmService
                 'total_birds_sold' => $totalBirdsSold,
                 'total_water_liters' => $totalWaterLiters,
                 'total_feed_grams' => $totalFeedGrams,
-                'total_feed_kg' => round($totalFeedGrams / 1000, 2),
+                'total_feed_kg' => round($totalFeedGrams / 1000, 4),
                 'total_feed_cost' => $totalFeedCost,
                 'total_med_dose' => $totalMedDose,
                 'total_med_cost' => $totalMedCost,
@@ -874,7 +874,7 @@ class FarmService
             : 'starter';
 
         $inputUnitMode = $input['input_unit_mode'] ?? 'kg'; // kg, g, l, ml
-        $rawQty = max(0.01, (float) ($input['quantity_value'] ?? 1));
+        $rawQty = max(0.0001, (float) ($input['quantity_value'] ?? 1));
         $totalCost = max(0.0, (float) ($input['total_cost'] ?? 0));
 
         if ($category !== 'medicine') {
@@ -896,6 +896,8 @@ class FarmService
             }
         }
 
+        $totalGramsOrMl = round(max(0.0001, $totalGramsOrMl), 4);
+
         // Exact formula: Cost per Gram / ml = Total Purchase Price / Total Weight in Grams (or Volume in ml)
         $unitCostPerGramOrMl = round($totalCost / $totalGramsOrMl, 6);
 
@@ -903,11 +905,11 @@ class FarmService
             'item_name' => $name,
             'category' => $category,
             'unit_type' => $unitType,
-            'initial_quantity_g_or_ml' => round($totalGramsOrMl, 2),
-            'total_quantity_g_or_ml' => round($totalGramsOrMl, 2),
+            'initial_quantity_g_or_ml' => $totalGramsOrMl,
+            'total_quantity_g_or_ml' => $totalGramsOrMl,
             'total_cost' => round($totalCost, 2),
             'unit_cost_per_g_or_ml' => $unitCostPerGramOrMl,
-            'purchase_date' => $input['purchase_date'] ?: date('Y-m-d'),
+            'purchase_date' => !empty($input['purchase_date']) ? (string) $input['purchase_date'] : date('Y-m-d'),
         ]);
 
         $this->addAiMemory(
@@ -1063,11 +1065,11 @@ class FarmService
         }
 
         $mortality = max(0, (int) ($input['mortality_count'] ?? 0));
-        $waterLiters = max(0.0, (float) ($input['water_liters'] ?? 0));
+        $waterLiters = round(max(0.0, (float) ($input['water_liters'] ?? 0)), 4);
 
         // Feed consumption (in grams)
         $feedItemId = !empty($input['feed_item_id']) ? (int) $input['feed_item_id'] : null;
-        $feedGrams = max(0.0, (float) ($input['feed_grams'] ?? 0));
+        $feedGrams = round(max(0.0, (float) ($input['feed_grams'] ?? 0)), 4);
         $feedCostCalculated = 0.0;
 
         if ($feedItemId && $feedGrams > 0) {
@@ -1077,7 +1079,7 @@ class FarmService
                 $feedCostCalculated = round($feedGrams * $unitCost, 2);
                 $newRemaining = max(0.0, (float) $feedItem['total_quantity_g_or_ml'] - $feedGrams);
                 $this->db->update('inventory_items', $feedItemId, [
-                    'total_quantity_g_or_ml' => round($newRemaining, 2),
+                    'total_quantity_g_or_ml' => round($newRemaining, 4),
                 ]);
             }
         }
@@ -1094,7 +1096,7 @@ class FarmService
         if (!empty($checkedMedIds)) {
             foreach ($checkedMedIds as $rawId) {
                 $id = (int) $rawId;
-                $dose = max(0.0, (float) ($medDosesMap[$id] ?? $medDosesMap[(string) $id] ?? 0));
+                $dose = round(max(0.0, (float) ($medDosesMap[$id] ?? $medDosesMap[(string) $id] ?? 0)), 4);
                 if ($id > 0 && $dose > 0) {
                     $medItem = $this->db->findById('inventory_items', $id);
                     if ($medItem) {
@@ -1102,7 +1104,7 @@ class FarmService
                         $cost = round($dose * $unitCost, 2);
                         $newRemaining = max(0.0, (float) $medItem['total_quantity_g_or_ml'] - $dose);
                         $this->db->update('inventory_items', $id, [
-                            'total_quantity_g_or_ml' => round($newRemaining, 2),
+                            'total_quantity_g_or_ml' => round($newRemaining, 4),
                         ]);
                         $medicationsUsed[] = [
                             'item_id' => $id,
@@ -1111,7 +1113,7 @@ class FarmService
                             'unit' => $medItem['unit_type'] ?? 'ml',
                             'cost' => $cost,
                         ];
-                        $medDose += $dose;
+                        $medDose = round($medDose + $dose, 4);
                         $medCostCalculated += $cost;
                         if ($medItemId === null) {
                             $medItemId = $id;
@@ -1122,7 +1124,7 @@ class FarmService
             $medCostCalculated = round($medCostCalculated, 2);
         } else {
             $medItemId = !empty($input['med_item_id']) ? (int) $input['med_item_id'] : null;
-            $medDose = max(0.0, (float) ($input['med_dose_g_ml'] ?? 0));
+            $medDose = round(max(0.0, (float) ($input['med_dose_g_ml'] ?? 0)), 4);
             if ($medItemId && $medDose > 0) {
                 $medItem = $this->db->findById('inventory_items', $medItemId);
                 if ($medItem) {
@@ -1130,7 +1132,7 @@ class FarmService
                     $medCostCalculated = round($medDose * $unitCost, 2);
                     $newRemaining = max(0.0, (float) $medItem['total_quantity_g_or_ml'] - $medDose);
                     $this->db->update('inventory_items', $medItemId, [
-                        'total_quantity_g_or_ml' => round($newRemaining, 2),
+                        'total_quantity_g_or_ml' => round($newRemaining, 4),
                     ]);
                     $medicationsUsed[] = [
                         'item_id' => $medItemId,
@@ -2060,7 +2062,7 @@ class FarmService
         $feedItemId = !empty($input['feed_item_id']) ? (int) $input['feed_item_id'] : null;
         $rawFeedQty = max(0.0, (float) ($input['feed_qty'] ?? 0));
         $feedUnit = ($input['feed_unit'] ?? 'kg') === 'g' ? 'g' : 'kg';
-        $feedGrams = ($feedUnit === 'kg') ? ($rawFeedQty * 1000.0) : $rawFeedQty;
+        $feedGrams = round(($feedUnit === 'kg') ? ($rawFeedQty * 1000.0) : $rawFeedQty, 4);
         $feedCostCalculated = 0.0;
         if ($feedItemId && $feedGrams > 0) {
             $feedItem = $this->db->findById('inventory_items', $feedItemId);
@@ -2069,7 +2071,7 @@ class FarmService
                 $feedCostCalculated = round($feedGrams * $unitCost, 2);
                 $newRem = max(0.0, (float) ($feedItem['total_quantity_g_or_ml'] ?? 0) - $feedGrams);
                 $this->db->update('inventory_items', $feedItemId, [
-                    'total_quantity_g_or_ml' => round($newRem, 2),
+                    'total_quantity_g_or_ml' => round($newRem, 4),
                 ]);
             }
         }
@@ -2081,7 +2083,7 @@ class FarmService
         $medDosesMap = isset($input['med_doses']) && is_array($input['med_doses']) ? $input['med_doses'] : [];
         foreach ($checkedMedIds as $rawId) {
             $id = (int) $rawId;
-            $dose = max(0.0, (float) ($medDosesMap[$id] ?? $medDosesMap[(string) $id] ?? 0));
+            $dose = round(max(0.0, (float) ($medDosesMap[$id] ?? $medDosesMap[(string) $id] ?? 0)), 4);
             if ($id > 0 && $dose > 0) {
                 $medItem = $this->db->findById('inventory_items', $id);
                 if ($medItem) {
@@ -2089,7 +2091,7 @@ class FarmService
                     $cost = round($dose * $unitCost, 2);
                     $newRem = max(0.0, (float) ($medItem['total_quantity_g_or_ml'] ?? 0) - $dose);
                     $this->db->update('inventory_items', $id, [
-                        'total_quantity_g_or_ml' => round($newRem, 2),
+                        'total_quantity_g_or_ml' => round($newRem, 4),
                     ]);
                     $medicationsUsed[] = [
                         'item_id' => $id,
@@ -2098,7 +2100,7 @@ class FarmService
                         'unit' => $medItem['unit_type'] ?? 'ml',
                         'cost' => $cost,
                     ];
-                    $medDose += $dose;
+                    $medDose = round($medDose + $dose, 4);
                     $medCostCalculated += $cost;
                 }
             }
@@ -2112,9 +2114,9 @@ class FarmService
             'cracked_eggs' => $crackedEggs,
             'mortality_count' => $mortality,
             'feed_item_id' => $feedItemId,
-            'feed_grams' => round($feedGrams, 2),
+            'feed_grams' => $feedGrams,
             'feed_cost_calculated' => $feedCostCalculated,
-            'med_dose_g_ml' => round($medDose, 2),
+            'med_dose_g_ml' => round($medDose, 4),
             'med_cost_calculated' => $medCostCalculated,
             'medications_used' => $medicationsUsed,
             'notes' => $notes,
@@ -2679,6 +2681,357 @@ class FarmService
             'amount_paid' => $newPaid,
             'balance_due' => $newBalance,
             'payment_status' => $newStatus,
+        ]);
+    }
+
+    private function adjustInventoryBalance(int $itemId, float $delta): ?array
+    {
+        if ($itemId <= 0) {
+            return null;
+        }
+        $item = $this->db->findById('inventory_items', $itemId);
+        if (!$item) {
+            return null;
+        }
+        $newRem = round(max(0.0, (float) ($item['total_quantity_g_or_ml'] ?? 0) + $delta), 4);
+        $this->db->update('inventory_items', $itemId, [
+            'total_quantity_g_or_ml' => $newRem,
+        ]);
+        $item['total_quantity_g_or_ml'] = $newRem;
+        return $item;
+    }
+
+    public static function fmtQty(float $val): string
+    {
+        $s = rtrim(rtrim(number_format($val, 4), '0'), '.');
+        return ($s === '' || $s === '-0') ? '0' : $s;
+    }
+
+    public function updateProductionBatch(int $batchId, array $input): void
+    {
+        $batch = $this->db->findById('production_batches', $batchId);
+        if (!$batch) {
+            throw new InvalidArgumentException('Production batch not found.');
+        }
+
+        $logs = $this->db->where('production_daily_logs', 'production_batch_id', $batchId);
+        $sales = $this->db->where('batch_sales', 'production_batch_id', $batchId);
+        $totalMortality = array_sum(array_map(fn($l) => (int) ($l['mortality_count'] ?? 0), $logs));
+        $totalSold = array_sum(array_map(fn($s) => (int) ($s['birds_sold'] ?? 0), $sales));
+
+        $batchCode = trim((string) ($input['batch_code'] ?? '')) ?: (string) $batch['batch_code'];
+        $flockType = trim((string) ($input['flock_type'] ?? '')) ?: (string) $batch['flock_type'];
+        $initialBirds = max(1, (int) ($input['initial_bird_count'] ?? $batch['initial_bird_count']));
+        $initialAgeDays = max(1, (int) ($input['initial_age_days'] ?? $batch['initial_age_days'] ?? 1));
+        $startDate = !empty($input['start_date']) ? (string) $input['start_date'] : (string) $batch['start_date'];
+        $docCost = max(0.0, (float) ($input['transferred_incubation_cost'] ?? $batch['transferred_incubation_cost'] ?? 0));
+        $status = in_array($input['status'] ?? '', ['Active', 'Completed'], true)
+            ? (string) $input['status']
+            : (string) ($batch['status'] ?? 'Active');
+
+        $currentBirds = max(0, $initialBirds - $totalMortality - $totalSold);
+        $costPerChick = $docCost / $initialBirds;
+
+        $sellingPrice = isset($input['selling_price_per_bird']) && $input['selling_price_per_bird'] !== ''
+            ? round(max(0.0, (float) $input['selling_price_per_bird']), 2)
+            : (float) ($batch['target_selling_price'] ?? 0);
+
+        $targetMargin = (float) ($batch['target_profit_margin_pct'] ?? 30.0);
+        if ($sellingPrice > 0 && $costPerChick > 0) {
+            $targetMargin = round(max(0.0, (($sellingPrice - $costPerChick) / $costPerChick) * 100), 2);
+        }
+
+        $this->db->update('production_batches', $batchId, [
+            'batch_code' => $batchCode,
+            'flock_type' => $flockType,
+            'initial_bird_count' => $initialBirds,
+            'current_bird_count' => $currentBirds,
+            'initial_age_days' => $initialAgeDays,
+            'start_date' => $startDate,
+            'transferred_incubation_cost' => round($docCost, 2),
+            'target_selling_price' => $sellingPrice,
+            'target_profit_margin_pct' => $targetMargin,
+            'status' => $status,
+        ]);
+    }
+
+    public function updateProductionDailyLog(int $logId, array $input): void
+    {
+        $oldLog = $this->db->findById('production_daily_logs', $logId);
+        if (!$oldLog) {
+            throw new InvalidArgumentException('Production daily log not found.');
+        }
+        $batchId = (int) ($oldLog['production_batch_id'] ?? 0);
+        $batch = $this->db->findById('production_batches', $batchId);
+        if (!$batch) {
+            throw new InvalidArgumentException('Parent production batch not found.');
+        }
+
+        // Step A: Refund previous feed consumption back to inventory
+        $oldFeedId = (int) ($oldLog['feed_item_id'] ?? 0);
+        $oldFeedGrams = (float) ($oldLog['feed_grams'] ?? 0);
+        if ($oldFeedId > 0 && $oldFeedGrams > 0) {
+            $this->adjustInventoryBalance($oldFeedId, $oldFeedGrams);
+        }
+
+        // Step B: Refund previous medications back to inventory
+        if (!empty($oldLog['medications_used']) && is_array($oldLog['medications_used'])) {
+            foreach ($oldLog['medications_used'] as $mu) {
+                $mId = (int) ($mu['item_id'] ?? $mu['med_item_id'] ?? 0);
+                $mDose = (float) ($mu['dose'] ?? 0);
+                if ($mId > 0 && $mDose > 0) {
+                    $this->adjustInventoryBalance($mId, $mDose);
+                }
+            }
+        } elseif (!empty($oldLog['med_item_id']) && (float) ($oldLog['med_dose_g_ml'] ?? 0) > 0) {
+            $this->adjustInventoryBalance((int) $oldLog['med_item_id'], (float) $oldLog['med_dose_g_ml']);
+        }
+
+        // Step C: Deduct updated feed consumption
+        $newFeedId = !empty($input['feed_item_id']) ? (int) $input['feed_item_id'] : null;
+        $newFeedGrams = round(max(0.0, (float) ($input['feed_grams'] ?? 0)), 4);
+        $newFeedCost = 0.0;
+        if ($newFeedId && $newFeedGrams > 0) {
+            $feedItem = $this->db->findById('inventory_items', $newFeedId);
+            if ($feedItem) {
+                $newFeedCost = round($newFeedGrams * (float) ($feedItem['unit_cost_per_g_or_ml'] ?? 0), 2);
+                $this->adjustInventoryBalance($newFeedId, -$newFeedGrams);
+            }
+        }
+
+        // Step D: Deduct updated medications checklist
+        $medicationsUsed = [];
+        $newMedItemId = null;
+        $newMedDose = 0.0;
+        $newMedCost = 0.0;
+        $checkedMedIds = isset($input['med_items']) && is_array($input['med_items']) ? $input['med_items'] : [];
+        $medDosesMap = isset($input['med_doses']) && is_array($input['med_doses']) ? $input['med_doses'] : [];
+        foreach ($checkedMedIds as $rawId) {
+            $id = (int) $rawId;
+            $dose = round(max(0.0, (float) ($medDosesMap[$id] ?? $medDosesMap[(string) $id] ?? 0)), 4);
+            if ($id > 0 && $dose > 0) {
+                $medItem = $this->db->findById('inventory_items', $id);
+                if ($medItem) {
+                    $cost = round($dose * (float) ($medItem['unit_cost_per_g_or_ml'] ?? 0), 2);
+                    $this->adjustInventoryBalance($id, -$dose);
+                    $medicationsUsed[] = [
+                        'item_id' => $id,
+                        'item_name' => $medItem['item_name'],
+                        'dose' => $dose,
+                        'unit' => $medItem['unit_type'] ?? 'ml',
+                        'cost' => $cost,
+                    ];
+                    $newMedDose = round($newMedDose + $dose, 4);
+                    $newMedCost += $cost;
+                    if ($newMedItemId === null) {
+                        $newMedItemId = $id;
+                    }
+                }
+            }
+        }
+        $newMedCost = round($newMedCost, 2);
+
+        // Step E: Adjust parent batch live count by mortality delta
+        $newMortality = max(0, (int) ($input['mortality_count'] ?? 0));
+        $mortDelta = (int) ($oldLog['mortality_count'] ?? 0) - $newMortality;
+        if ($mortDelta !== 0) {
+            $this->db->update('production_batches', $batchId, [
+                'current_bird_count' => max(0, (int) ($batch['current_bird_count'] ?? 0) + $mortDelta),
+            ]);
+        }
+
+        // Step F: Save updated log
+        $this->db->update('production_daily_logs', $logId, [
+            'log_date' => !empty($input['log_date']) ? (string) $input['log_date'] : (string) $oldLog['log_date'],
+            'mortality_count' => $newMortality,
+            'good_eggs' => max(0, (int) ($input['good_eggs'] ?? 0)),
+            'cracked_eggs' => max(0, (int) ($input['cracked_eggs'] ?? 0)),
+            'water_liters' => round(max(0.0, (float) ($input['water_liters'] ?? 0)), 4),
+            'feed_item_id' => $newFeedId,
+            'feed_grams' => $newFeedGrams,
+            'feed_cost_calculated' => $newFeedCost,
+            'med_item_id' => $newMedItemId,
+            'med_dose_g_ml' => $newMedDose,
+            'med_cost_calculated' => $newMedCost,
+            'medications_used' => $medicationsUsed,
+            'labor_cost' => round(max(0.0, (float) ($input['labor_cost'] ?? 0)), 2),
+            'sanitation_cost' => round(max(0.0, (float) ($input['sanitation_cost'] ?? 0)), 2),
+            'water_other_cost' => round(max(0.0, (float) ($input['water_other_cost'] ?? 0)), 2),
+            'notes' => trim((string) ($input['notes'] ?? '')),
+        ]);
+    }
+
+    public function updateLayerDailyLog(int $logId, array $input): void
+    {
+        $oldLog = $this->db->findById('egg_collection_logs', $logId);
+        if (!$oldLog) {
+            throw new InvalidArgumentException('Layer egg collection log not found.');
+        }
+        $flockId = (int) ($oldLog['layer_flock_id'] ?? 0);
+        $flock = $this->db->findById('layer_flocks', $flockId);
+        if (!$flock) {
+            throw new InvalidArgumentException('Parent layer flock not found.');
+        }
+
+        // Refund previous feed to inventory before deducting updated feed
+        $oldFeedId = (int) ($oldLog['feed_item_id'] ?? 0);
+        $oldFeedGrams = (float) ($oldLog['feed_grams'] ?? 0);
+        if ($oldFeedId > 0 && $oldFeedGrams > 0) {
+            $this->adjustInventoryBalance($oldFeedId, $oldFeedGrams);
+        }
+
+        $newFeedId = !empty($input['feed_item_id']) ? (int) $input['feed_item_id'] : null;
+        $rawFeedQty = max(0.0, (float) ($input['feed_qty'] ?? 0));
+        $feedUnit = ($input['feed_unit'] ?? 'kg') === 'g' ? 'g' : 'kg';
+        $newFeedGrams = round(($feedUnit === 'kg') ? ($rawFeedQty * 1000.0) : $rawFeedQty, 4);
+        $newFeedCost = 0.0;
+        if ($newFeedId && $newFeedGrams > 0) {
+            $feedItem = $this->db->findById('inventory_items', $newFeedId);
+            if ($feedItem) {
+                $newFeedCost = round($newFeedGrams * (float) ($feedItem['unit_cost_per_g_or_ml'] ?? 0), 2);
+                $this->adjustInventoryBalance($newFeedId, -$newFeedGrams);
+            }
+        }
+
+        $newMortality = max(0, (int) ($input['mortality_count'] ?? 0));
+        $mortDelta = (int) ($oldLog['mortality_count'] ?? 0) - $newMortality;
+        if ($mortDelta !== 0) {
+            $this->db->update('layer_flocks', $flockId, [
+                'current_bird_count' => max(0, (int) ($flock['current_bird_count'] ?? 0) + $mortDelta),
+            ]);
+        }
+
+        $updates = [
+            'log_date' => !empty($input['log_date']) ? (string) $input['log_date'] : (string) $oldLog['log_date'],
+            'good_eggs' => max(0, (int) ($input['good_eggs'] ?? 0)),
+            'cracked_eggs' => max(0, (int) ($input['cracked_eggs'] ?? 0)),
+            'mortality_count' => $newMortality,
+            'feed_item_id' => $newFeedId,
+            'feed_grams' => $newFeedGrams,
+            'feed_cost_calculated' => $newFeedCost,
+            'notes' => trim((string) ($input['notes'] ?? '')),
+        ];
+
+        if (!empty($input['med_editor_present']) || array_key_exists('med_items', $input)) {
+            if (!empty($oldLog['medications_used']) && is_array($oldLog['medications_used'])) {
+                foreach ($oldLog['medications_used'] as $mu) {
+                    $mId = (int) ($mu['item_id'] ?? $mu['med_item_id'] ?? 0);
+                    $mDose = (float) ($mu['dose'] ?? 0);
+                    if ($mId > 0 && $mDose > 0) {
+                        $this->adjustInventoryBalance($mId, $mDose);
+                    }
+                }
+            }
+
+            $medicationsUsed = [];
+            $newMedDose = 0.0;
+            $newMedCost = 0.0;
+            $checkedMedIds = isset($input['med_items']) && is_array($input['med_items']) ? $input['med_items'] : [];
+            $medDosesMap = isset($input['med_doses']) && is_array($input['med_doses']) ? $input['med_doses'] : [];
+            foreach ($checkedMedIds as $rawId) {
+                $id = (int) $rawId;
+                $dose = round(max(0.0, (float) ($medDosesMap[$id] ?? $medDosesMap[(string) $id] ?? 0)), 4);
+                if ($id > 0 && $dose > 0) {
+                    $medItem = $this->db->findById('inventory_items', $id);
+                    if ($medItem) {
+                        $cost = round($dose * (float) ($medItem['unit_cost_per_g_or_ml'] ?? 0), 2);
+                        $this->adjustInventoryBalance($id, -$dose);
+                        $medicationsUsed[] = [
+                            'item_id' => $id,
+                            'item_name' => $medItem['item_name'],
+                            'dose' => $dose,
+                            'unit' => $medItem['unit_type'] ?? 'ml',
+                            'cost' => $cost,
+                        ];
+                        $newMedDose = round($newMedDose + $dose, 4);
+                        $newMedCost += $cost;
+                    }
+                }
+            }
+            $newMedCost = round($newMedCost, 2);
+
+            $updates['med_dose_g_ml'] = $newMedDose;
+            $updates['med_cost_calculated'] = $newMedCost;
+            $updates['medications_used'] = $medicationsUsed;
+        }
+
+        $this->db->update('egg_collection_logs', $logId, $updates);
+    }
+
+    public function updateIncubationBatch(int $batchId, array $input): void
+    {
+        $batch = $this->db->findById('incubation_batches', $batchId);
+        if (!$batch) {
+            throw new InvalidArgumentException('Incubation batch not found.');
+        }
+
+        $profiles = VeterinaryKnowledgeBase::getIncubationSpeciesProfiles();
+        $species = strtolower(trim((string) ($input['species'] ?? $batch['species'] ?? 'chicken')));
+        if (!isset($profiles[$species])) {
+            $species = (string) ($batch['species'] ?? 'chicken');
+        }
+
+        $allowedStatuses = ['Active', 'Completed', 'Moved to Production', 'Collected'];
+        $status = in_array($input['status'] ?? '', $allowedStatuses, true)
+            ? (string) $input['status']
+            : (string) ($batch['status'] ?? 'Active');
+
+        $updates = [
+            'batch_code' => trim((string) ($input['batch_code'] ?? '')) ?: (string) $batch['batch_code'],
+            'species' => $species,
+            'setter_id' => trim((string) ($input['setter_id'] ?? '')) ?: (string) ($batch['setter_id'] ?? 'Setter A'),
+            'parent_flock_info' => trim((string) ($input['parent_flock_info'] ?? '')) ?: (string) ($batch['parent_flock_info'] ?? ''),
+            'flock_age_weeks' => max(1, (int) ($input['flock_age_weeks'] ?? $batch['flock_age_weeks'] ?? 32)),
+            'eggs_set' => max(1, (int) ($input['eggs_set'] ?? $batch['eggs_set'] ?? 1)),
+            'start_date' => !empty($input['start_date']) ? (string) $input['start_date'] : (string) $batch['start_date'],
+            'status' => $status,
+        ];
+
+        if (($batch['ownership_type'] ?? 'Farm') === 'Client') {
+            $serviceFee = round(max(0.0, (float) ($input['service_fee'] ?? $batch['service_fee'] ?? 0)), 2);
+            $amountPaid = (float) ($batch['amount_paid'] ?? 0);
+            $balanceDue = round(max(0.0, $serviceFee - $amountPaid), 2);
+            $updates['client_name'] = trim((string) ($input['client_name'] ?? $batch['client_name'] ?? ''));
+            $updates['client_phone'] = trim((string) ($input['client_phone'] ?? $batch['client_phone'] ?? ''));
+            $updates['service_fee'] = $serviceFee;
+            $updates['balance_due'] = $balanceDue;
+            $updates['payment_status'] = $balanceDue <= 0 ? 'Paid' : ($amountPaid > 0 ? 'Partial' : 'Pending');
+            $updates['egg_cost'] = 0.0;
+        } else {
+            $updates['egg_cost'] = round(max(0.0, (float) ($input['egg_cost'] ?? $batch['egg_cost'] ?? 0)), 2);
+        }
+
+        $this->db->update('incubation_batches', $batchId, $updates);
+    }
+
+    public function updateInventoryItem(int $itemId, array $input): void
+    {
+        $item = $this->db->findById('inventory_items', $itemId);
+        if (!$item) {
+            throw new InvalidArgumentException('Inventory item not found.');
+        }
+
+        $category = in_array($input['category'] ?? '', ['starter', 'grower', 'layer', 'medicine'], true)
+            ? (string) $input['category']
+            : (string) ($item['category'] ?? 'starter');
+        $unitType = $category !== 'medicine'
+            ? 'g'
+            : ((($input['unit_type'] ?? $item['unit_type'] ?? 'ml') === 'g') ? 'g' : 'ml');
+
+        $initialQty = round(max(0.0001, (float) ($input['initial_quantity_g_or_ml'] ?? $item['initial_quantity_g_or_ml'])), 4);
+        $remQty = round(max(0.0, (float) ($input['total_quantity_g_or_ml'] ?? $item['total_quantity_g_or_ml'])), 4);
+        $totalCost = round(max(0.0, (float) ($input['total_cost'] ?? $item['total_cost'])), 2);
+        $unitCost = round($totalCost / $initialQty, 6);
+
+        $this->db->update('inventory_items', $itemId, [
+            'item_name' => trim((string) ($input['item_name'] ?? '')) ?: (string) $item['item_name'],
+            'category' => $category,
+            'unit_type' => $unitType,
+            'initial_quantity_g_or_ml' => $initialQty,
+            'total_quantity_g_or_ml' => $remQty,
+            'total_cost' => $totalCost,
+            'unit_cost_per_g_or_ml' => $unitCost,
+            'purchase_date' => !empty($input['purchase_date']) ? (string) $input['purchase_date'] : (string) ($item['purchase_date'] ?? date('Y-m-d')),
         ]);
     }
 

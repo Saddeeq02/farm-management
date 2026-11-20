@@ -407,6 +407,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $setFlash('flash_success', 'Egg sale balance payment recorded.');
                 header('Location: /?page=eggs');
                 exit;
+
+            case 'update_production_batch':
+                $farm->updateProductionBatch((int) ($_POST['production_batch_id'] ?? 0), $_POST);
+                $setFlash('flash_success', 'Production batch updated successfully.');
+                header('Location: /?page=production');
+                exit;
+
+            case 'update_production_daily_log':
+                $farm->updateProductionDailyLog((int) ($_POST['log_id'] ?? 0), $_POST);
+                $setFlash('flash_success', 'Daily production log updated and inventory/bird counts resynced.');
+                header('Location: /?page=production');
+                exit;
+
+            case 'update_layer_daily_log':
+                $farm->updateLayerDailyLog((int) ($_POST['log_id'] ?? 0), $_POST);
+                $setFlash('flash_success', 'Daily layer egg log updated and store/flock counts resynced.');
+                header('Location: /?page=layers');
+                exit;
+
+            case 'update_incubation_batch':
+                $farm->updateIncubationBatch((int) ($_POST['incubation_batch_id'] ?? 0), $_POST);
+                $setFlash('flash_success', 'Incubation batch updated successfully.');
+                header('Location: /?page=incubation');
+                exit;
+
+            case 'update_inventory_item':
+                $farm->updateInventoryItem((int) ($_POST['inventory_item_id'] ?? 0), $_POST);
+                $setFlash('flash_success', 'Inventory item updated and exact base-unit cost recalculated.');
+                header('Location: /?page=inventory');
+                exit;
         }
     } catch (Throwable $e) {
         $setFlash('flash_error', $e->getMessage());

@@ -87,7 +87,7 @@
                     </div>
                     <div>
                         <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Water Intake (Liters)</label>
-                        <input type="number" step="0.1" name="water_liters" value="350" min="0" required
+                        <input type="number" step="any" name="water_liters" value="350" min="0" required
                                class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-emerald-500 focus:outline-none">
                     </div>
                 </div>
@@ -114,8 +114,8 @@
                             </select>
                         </div>
                         <div>
-                            <label class="block text-[11px] text-slate-600 dark:text-slate-400 mb-1">Weight Consumed in Grams (e.g. 150,000g = 150kg)</label>
-                            <input type="number" step="1" name="feed_grams" id="prodFeedGrams" value="150000" min="0"
+                            <label class="block text-[11px] text-slate-600 dark:text-slate-400 mb-1">Weight Consumed in Grams (e.g. 150000 or 0.245)</label>
+                            <input type="number" step="any" name="feed_grams" id="prodFeedGrams" value="150000" min="0"
                                    oninput="updateDailyTelemetryCostPreview()"
                                    class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-1.5 text-xs font-mono focus:border-emerald-500 focus:outline-none">
                         </div>
@@ -140,7 +140,7 @@
                                         </span>
                                     </label>
                                     <div class="flex items-center gap-1 shrink-0">
-                                        <input type="number" step="0.1" min="0" name="med_doses[{{ $item['id'] }}]" placeholder="Dose" disabled
+                                        <input type="number" step="any" min="0" name="med_doses[{{ $item['id'] }}]" placeholder="Dose" disabled
                                                class="w-20 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-cyan-700 dark:text-cyan-300 px-2 py-1 text-[11px] font-mono outline-none disabled:opacity-40">
                                         <span class="text-[10px] font-mono text-slate-500">{{ $item['unit_label'] }}</span>
                                     </div>
@@ -325,6 +325,10 @@
                         <span class="text-[11px] uppercase tracking-wider text-emerald-700 dark:text-emerald-300 block">Live Selling Price (+{{ number_format($m['target_margin_pct'], 0) }}%)</span>
                         <span class="text-xl font-black text-emerald-600 dark:text-emerald-400">₦{{ number_format($m['recommended_selling_price'], 2) }} <span class="text-xs font-normal text-slate-500 dark:text-slate-400">/ bird</span></span>
                     </div>
+                    <button type="button" onclick="openEditProdBatchModal({{ (int)$pb['id'] }})"
+                            class="px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[11px] font-sans font-semibold flex items-center gap-1.5 shadow-sm transition cursor-pointer">
+                        <i class="fa-solid fa-pen-to-square"></i> Edit Batch
+                    </button>
                     <button type="button" onclick='openBatchPnLModal(@json($pb))'
                             class="px-3.5 py-2 rounded-xl bg-slate-800 dark:bg-slate-700 hover:bg-slate-700 dark:hover:bg-slate-600 text-white text-[11px] font-sans font-semibold flex items-center gap-1.5 shadow-sm transition cursor-pointer">
                         <i class="fa-solid fa-file-invoice-dollar text-emerald-400"></i> Batch P&amp;L Report
@@ -354,12 +358,12 @@
                 <div class="p-3.5">
                     <span class="text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400">Feed Consumed</span>
                     <div class="text-sm font-bold font-mono text-slate-900 dark:text-white mt-0.5">₦{{ number_format($m['total_feed_cost'], 2) }}</div>
-                    <div class="text-[11px] text-slate-500 dark:text-slate-400">{{ number_format($m['total_feed_grams']) }}g ({{ $m['total_feed_kg'] }}kg)</div>
+                    <div class="text-[11px] text-slate-500 dark:text-slate-400">{{ \App\Core\FarmService::fmtQty((float)$m['total_feed_grams']) }}g ({{ \App\Core\FarmService::fmtQty((float)$m['total_feed_kg']) }}kg)</div>
                 </div>
                 <div class="p-3.5">
                     <span class="text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400">Medication &amp; Vaccines</span>
                     <div class="text-sm font-bold font-mono text-slate-900 dark:text-white mt-0.5">₦{{ number_format($m['total_med_cost'], 2) }}</div>
-                    <div class="text-[11px] text-slate-500 dark:text-slate-400">{{ number_format($m['total_med_dose']) }} g/ml</div>
+                    <div class="text-[11px] text-slate-500 dark:text-slate-400">{{ \App\Core\FarmService::fmtQty((float)$m['total_med_dose']) }} g/ml</div>
                 </div>
                 <div class="p-3.5">
                     <span class="text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400">Labor, Sanit. &amp; Other</span>
@@ -389,6 +393,7 @@
                             <th class="pb-2 text-right">Med Cost</th>
                             <th class="pb-2 text-right">Labor + Sanit. + Other</th>
                             <th class="pb-2 text-right">Daily Total</th>
+                            <th class="pb-2 text-right pl-2">Action</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-200/70 dark:divide-slate-800/70 font-mono">
@@ -408,25 +413,31 @@
                                         —
                                     @endif
                                 </td>
-                                <td class="py-2.5 text-right text-slate-700 dark:text-slate-200">{{ number_format((float)$log['water_liters'], 1) }} L</td>
+                                <td class="py-2.5 text-right text-slate-700 dark:text-slate-200">{{ \App\Core\FarmService::fmtQty((float)$log['water_liters']) }} L</td>
                                 <td class="py-2.5 font-sans text-slate-800 dark:text-slate-100">
                                     {{ $log['feed_item_name'] }}
-                                    <span class="font-mono text-slate-500 dark:text-slate-400">({{ number_format((float)$log['feed_grams']) }}g)</span>
+                                    <span class="font-mono text-slate-500 dark:text-slate-400">({{ \App\Core\FarmService::fmtQty((float)$log['feed_grams']) }}g)</span>
                                 </td>
                                 <td class="py-2.5 text-right text-slate-800 dark:text-slate-100">₦{{ number_format((float)$log['feed_cost_calculated'], 2) }}</td>
                                 <td class="py-2.5 font-sans text-slate-800 dark:text-slate-100">
                                     {{ $log['med_item_name'] }}
                                     @if (empty($log['has_multi_meds']) && (float)$log['med_dose_g_ml'] > 0)
-                                        <span class="font-mono text-slate-500 dark:text-slate-400">({{ number_format((float)$log['med_dose_g_ml']) }}{{ $log['med_unit'] }})</span>
+                                        <span class="font-mono text-slate-500 dark:text-slate-400">({{ \App\Core\FarmService::fmtQty((float)$log['med_dose_g_ml']) }}{{ $log['med_unit'] }})</span>
                                     @endif
                                 </td>
                                 <td class="py-2.5 text-right text-slate-800 dark:text-slate-100">₦{{ number_format((float)$log['med_cost_calculated'], 2) }}</td>
                                 <td class="py-2.5 text-right text-slate-700 dark:text-slate-200">₦{{ number_format((float)$log['labor_cost'] + (float)$log['sanitation_cost'] + (float)($log['water_other_cost'] ?? 0), 2) }}</td>
                                 <td class="py-2.5 text-right font-bold text-slate-900 dark:text-white">₦{{ number_format($log['daily_total_cost'], 2) }}</td>
+                                <td class="py-2.5 text-right pl-2">
+                                    <button type="button" onclick="openEditProdLogModal({{ (int)$log['id'] }})"
+                                            class="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[10px] font-sans font-semibold transition cursor-pointer">
+                                        <i class="fa-solid fa-pen"></i> Edit
+                                    </button>
+                                </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="10" class="py-4 text-center font-sans text-slate-500 dark:text-slate-400">No daily telemetry recorded for this batch yet.</td>
+                                <td colspan="11" class="py-4 text-center font-sans text-slate-500 dark:text-slate-400">No daily telemetry recorded for this batch yet.</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -687,7 +698,338 @@ function printDocumentArea() {
     win.focus();
     setTimeout(() => { win.print(); }, 250);
 }
+
+window.prodBatchesEditMap = <?php
+$pbEditMap = [];
+$pLogsEditMap = [];
+foreach ($productionBatches ?? [] as $_pb) {
+    $pbId = (int) ($_pb['id'] ?? 0);
+    $pbEditMap[$pbId] = [
+        'id' => $pbId,
+        'batch_code' => $_pb['batch_code'] ?? '',
+        'flock_type' => $_pb['flock_type'] ?? '',
+        'initial_bird_count' => (int) ($_pb['initial_bird_count'] ?? 0),
+        'initial_age_days' => (int) ($_pb['initial_age_days'] ?? 1),
+        'start_date' => $_pb['start_date'] ?? '',
+        'transferred_incubation_cost' => (float) ($_pb['transferred_incubation_cost'] ?? ($_pb['metrics']['incubation_cost'] ?? 0)),
+        'selling_price_per_bird' => (float) ($_pb['target_selling_price'] ?? ($_pb['metrics']['recommended_selling_price'] ?? 0)),
+        'status' => $_pb['status'] ?? 'Active',
+    ];
+    foreach ($_pb['logs'] ?? [] as $_lg) {
+        $lgId = (int) ($_lg['id'] ?? 0);
+        $pLogsEditMap[$lgId] = [
+            'id' => $lgId,
+            'batch_code' => $_pb['batch_code'] ?? '',
+            'log_date' => $_lg['log_date'] ?? '',
+            'mortality_count' => (int) ($_lg['mortality_count'] ?? 0),
+            'good_eggs' => (int) ($_lg['good_eggs'] ?? 0),
+            'cracked_eggs' => (int) ($_lg['cracked_eggs'] ?? 0),
+            'water_liters' => (float) ($_lg['water_liters'] ?? 0),
+            'feed_item_id' => (int) ($_lg['feed_item_id'] ?? 0),
+            'feed_grams' => (float) ($_lg['feed_grams'] ?? 0),
+            'med_item_id' => (int) ($_lg['med_item_id'] ?? 0),
+            'med_dose_g_ml' => (float) ($_lg['med_dose_g_ml'] ?? 0),
+            'medications_used' => $_lg['medications_used'] ?? [],
+            'labor_cost' => (float) ($_lg['labor_cost'] ?? 0),
+            'sanitation_cost' => (float) ($_lg['sanitation_cost'] ?? 0),
+            'water_other_cost' => (float) ($_lg['water_other_cost'] ?? 0),
+            'notes' => $_lg['notes'] ?? '',
+        ];
+    }
+}
+echo json_encode($pbEditMap, JSON_UNESCAPED_UNICODE);
+?>;
+window.prodLogsEditMap = <?php echo json_encode($pLogsEditMap, JSON_UNESCAPED_UNICODE); ?>;
+
+function openEditProdBatchModal(batchId) {
+    const b = window.prodBatchesEditMap[String(batchId)] || window.prodBatchesEditMap[batchId];
+    if (!b) return;
+    document.getElementById('editProdBatchId').value = b.id;
+    document.getElementById('editProdBatchCode').value = b.batch_code || '';
+    document.getElementById('editProdBatchStartDate').value = b.start_date || '';
+    document.getElementById('editProdBatchFlockType').value = b.flock_type || '';
+    document.getElementById('editProdBatchInitAge').value = b.initial_age_days || 1;
+    document.getElementById('editProdBatchInitCount').value = b.initial_bird_count || 1;
+    document.getElementById('editProdBatchIncCost').value = b.transferred_incubation_cost ?? 0;
+    document.getElementById('editProdBatchSellPrice').value = b.selling_price_per_bird ?? 0;
+    document.getElementById('editProdBatchStatus').value = b.status || 'Active';
+    openModal('editProductionBatchModal');
+}
+
+function openEditProdLogModal(logId) {
+    const l = window.prodLogsEditMap[String(logId)] || window.prodLogsEditMap[logId];
+    if (!l) return;
+    document.getElementById('editProdLogId').value = l.id;
+    document.getElementById('editProdLogSubtitle').textContent = 'Flock ' + (l.batch_code || '') + ' • Refunds old stock before applying updated quantities';
+    document.getElementById('editProdLogDate').value = l.log_date || '';
+    document.getElementById('editProdLogMortality').value = l.mortality_count ?? 0;
+    document.getElementById('editProdLogWater').value = l.water_liters ?? 0;
+    document.getElementById('editProdLogGoodEggs').value = l.good_eggs ?? 0;
+    document.getElementById('editProdLogCrackedEggs').value = l.cracked_eggs ?? 0;
+    document.getElementById('editProdLogFeedItem').value = l.feed_item_id ? String(l.feed_item_id) : '';
+    document.getElementById('editProdLogFeedGrams').value = l.feed_grams ?? 0;
+    document.getElementById('editProdLogLabor').value = l.labor_cost ?? 0;
+    document.getElementById('editProdLogSanit').value = l.sanitation_cost ?? 0;
+    document.getElementById('editProdLogWaterOther').value = l.water_other_cost ?? 0;
+    document.getElementById('editProdLogNotes').value = l.notes || '';
+
+    const container = document.getElementById('editProdLogMedList');
+    if (container) {
+        container.querySelectorAll('input[type="checkbox"][data-med-id]').forEach((cb) => {
+            cb.checked = false;
+        });
+        container.querySelectorAll('input[type="number"][data-med-dose]').forEach((inp) => {
+            inp.disabled = true;
+            inp.value = '';
+        });
+
+        const medEntries = Array.isArray(l.medications_used) && l.medications_used.length > 0
+            ? l.medications_used
+            : (l.med_item_id && parseFloat(l.med_dose_g_ml || 0) > 0
+                ? [{ item_id: l.med_item_id, dose_g_ml: l.med_dose_g_ml }]
+                : []);
+
+        medEntries.forEach((mu) => {
+            const mId = String(mu.item_id || mu.med_item_id || '');
+            const dose = mu.dose_g_ml ?? mu.med_dose_g_ml ?? mu.dose ?? '';
+            if (!mId) return;
+            const cb = container.querySelector(`input[type="checkbox"][data-med-id="${mId}"]`);
+            const inp = container.querySelector(`input[type="number"][data-med-dose="${mId}"]`);
+            if (cb && inp) {
+                cb.checked = true;
+                inp.disabled = false;
+                inp.value = dose;
+            }
+        });
+    }
+    openModal('editProdLogModal');
+}
 </script>
+
+<!-- MODAL: EDIT PRODUCTION BATCH -->
+<div id="editProductionBatchModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md hidden opacity-0 transition-opacity duration-300">
+    <div id="editProductionBatchModalBox" class="glass-card max-w-lg w-full rounded-3xl p-6 sm:p-8 border border-amber-500/40 relative transform scale-95 transition-transform duration-300 max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center">
+                    <i class="fa-solid fa-pen-to-square"></i>
+                </div>
+                <div>
+                    <h3 class="text-base font-bold text-slate-900 dark:text-white">Edit Production Batch</h3>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400">Adjust batch details, DOC capital cost, or status.</p>
+                </div>
+            </div>
+            <button type="button" onclick="closeModal('editProductionBatchModal')" class="text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <form method="POST" action="/?page=production" class="space-y-3.5 text-xs">
+            @csrf
+            <input type="hidden" name="action" value="update_production_batch">
+            <input type="hidden" name="production_batch_id" id="editProdBatchId">
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Batch Code</label>
+                    <input type="text" name="batch_code" id="editProdBatchCode" required
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-amber-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Start Date</label>
+                    <input type="date" name="start_date" id="editProdBatchStartDate" required
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-amber-500 focus:outline-none">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="sm:col-span-2">
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Flock Breed / Species</label>
+                    <input type="text" name="flock_type" id="editProdBatchFlockType" required
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs focus:border-amber-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Initial Age (Days)</label>
+                    <input type="number" name="initial_age_days" id="editProdBatchInitAge" min="1" required
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-amber-500 focus:outline-none">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Initial Bird Count</label>
+                    <input type="number" name="initial_bird_count" id="editProdBatchInitCount" min="1" required
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-amber-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">DOC / Inc. Cost (₦)</label>
+                    <input type="number" step="any" min="0" name="transferred_incubation_cost" id="editProdBatchIncCost" required
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-amber-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Target Price / Bird (₦)</label>
+                    <input type="number" step="any" min="0" name="selling_price_per_bird" id="editProdBatchSellPrice" required
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-emerald-700 dark:text-emerald-300 font-bold px-3 py-2 text-xs font-mono focus:border-amber-500 focus:outline-none">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Batch Status</label>
+                <select name="status" id="editProdBatchStatus"
+                        class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs focus:border-amber-500 focus:outline-none">
+                    <option value="Active">Active</option>
+                    <option value="Completed">Completed</option>
+                </select>
+            </div>
+
+            <div class="pt-3 flex items-center justify-end gap-2.5">
+                <button type="button" onclick="closeModal('editProductionBatchModal')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-300 dark:hover:bg-slate-700 transition cursor-pointer">
+                    Cancel
+                </button>
+                <button type="submit" class="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 text-xs font-mono font-bold shadow-md shadow-amber-500/25 transition cursor-pointer active:scale-95">
+                    Save Batch Changes
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- MODAL: EDIT PRODUCTION DAILY LOG -->
+<div id="editProdLogModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md hidden opacity-0 transition-opacity duration-300">
+    <div id="editProdLogModalBox" class="glass-card max-w-2xl w-full rounded-3xl p-6 sm:p-7 border border-amber-500/40 relative transform scale-95 transition-transform duration-300 max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center">
+                    <i class="fa-solid fa-pen"></i>
+                </div>
+                <div>
+                    <h3 class="text-base font-bold text-slate-900 dark:text-white">Edit Daily Telemetry Log</h3>
+                    <p id="editProdLogSubtitle" class="text-[11px] text-slate-500 dark:text-slate-400"></p>
+                </div>
+            </div>
+            <button type="button" onclick="closeModal('editProdLogModal')" class="text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <form method="POST" action="/?page=production" class="space-y-3.5 text-xs">
+            @csrf
+            <input type="hidden" name="action" value="update_production_daily_log">
+            <input type="hidden" name="log_id" id="editProdLogId">
+
+            <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Log Date</label>
+                    <input type="date" name="log_date" id="editProdLogDate" required
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-2.5 py-1.5 text-xs font-mono focus:border-amber-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Mortality</label>
+                    <input type="number" name="mortality_count" id="editProdLogMortality" min="0"
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-2.5 py-1.5 text-xs font-mono focus:border-amber-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Water (L)</label>
+                    <input type="number" step="any" min="0" name="water_liters" id="editProdLogWater"
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-2.5 py-1.5 text-xs font-mono focus:border-amber-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-amber-700 dark:text-amber-300 mb-1">Good Eggs</label>
+                    <input type="number" name="good_eggs" id="editProdLogGoodEggs" min="0"
+                           class="w-full rounded-xl border border-amber-400/50 bg-amber-50/50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-300 font-bold px-2.5 py-1.5 text-xs font-mono focus:border-amber-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Cracked Eggs</label>
+                    <input type="number" name="cracked_eggs" id="editProdLogCrackedEggs" min="0"
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-2.5 py-1.5 text-xs font-mono focus:border-amber-500 focus:outline-none">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2 border-t border-slate-200/70 dark:border-slate-800/70">
+                <div class="p-3 rounded-xl bg-white/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-700/70 space-y-2">
+                    <span class="text-xs font-bold text-slate-800 dark:text-slate-100 block">Feed Consumption (Grams)</span>
+                    <div>
+                        <label class="block text-[11px] text-slate-600 dark:text-slate-400 mb-1">Feed Stock</label>
+                        <select name="feed_item_id" id="editProdLogFeedItem"
+                                class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-2.5 py-1.5 text-xs focus:border-amber-500 focus:outline-none">
+                            <option value="">-- No Feed Logged --</option>
+                            @foreach ($inventoryItems as $item)
+                                @if (in_array($item['category'], ['starter', 'grower', 'layer'], true))
+                                    <option value="{{ $item['id'] }}">
+                                        [{{ strtoupper($item['category']) }}] {{ $item['item_name'] }} ({{ number_format((float)$item['total_quantity_g_or_ml']) }}g left)
+                                    </option>
+                                @endif
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] text-slate-600 dark:text-slate-400 mb-1">Grams Consumed (decimals allowed e.g. 0.245)</label>
+                        <input type="number" step="any" min="0" name="feed_grams" id="editProdLogFeedGrams"
+                               class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-2.5 py-1.5 text-xs font-mono focus:border-amber-500 focus:outline-none">
+                    </div>
+                </div>
+
+                <div class="p-3 rounded-xl bg-white/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-700/70 space-y-2">
+                    <span class="text-xs font-bold text-slate-800 dark:text-slate-100 block">Medications &amp; Vaccines</span>
+                    <div id="editProdLogMedList" class="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                        @forelse ($prodMedList as $item)
+                            <div class="flex items-center justify-between gap-2 bg-white/90 dark:bg-slate-800/90 rounded-lg px-2.5 py-1.5 border border-slate-200 dark:border-slate-700">
+                                <label class="flex items-center gap-2 min-w-0 cursor-pointer flex-1">
+                                    <input type="checkbox" name="med_items[]" value="{{ $item['id'] }}" data-med-id="{{ $item['id'] }}"
+                                           onchange="const inp = this.closest('div').querySelector('input[type=number]'); inp.disabled = !this.checked; if(!this.checked) inp.value=''; else inp.focus();"
+                                           class="rounded text-cyan-500 focus:ring-cyan-500">
+                                    <span class="text-[11px] font-medium text-slate-800 dark:text-slate-100 truncate">
+                                        {{ $item['item_name'] }}
+                                        <span class="font-mono text-[10px] text-slate-500 dark:text-slate-400">({{ number_format((float)$item['total_quantity_g_or_ml']) }}{{ $item['unit_label'] }})</span>
+                                    </span>
+                                </label>
+                                <div class="flex items-center gap-1 shrink-0">
+                                    <input type="number" step="any" min="0" name="med_doses[{{ $item['id'] }}]" data-med-dose="{{ $item['id'] }}" placeholder="Dose" disabled
+                                           class="w-20 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-cyan-700 dark:text-cyan-300 px-2 py-1 text-[11px] font-mono outline-none disabled:opacity-40">
+                                    <span class="text-[10px] font-mono text-slate-500">{{ $item['unit_label'] }}</span>
+                                </div>
+                            </div>
+                        @empty
+                            <p class="text-[11px] text-slate-400 italic py-1">No medications or vaccines in store yet.</p>
+                        @endforelse
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-1">
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Labor (₦)</label>
+                    <input type="number" step="any" min="0" name="labor_cost" id="editProdLogLabor"
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-2.5 py-1.5 text-xs font-mono focus:border-amber-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Sanitation (₦)</label>
+                    <input type="number" step="any" min="0" name="sanitation_cost" id="editProdLogSanit"
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-2.5 py-1.5 text-xs font-mono focus:border-amber-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-cyan-700 dark:text-cyan-300 mb-1">Water / Other (₦)</label>
+                    <input type="number" step="any" min="0" name="water_other_cost" id="editProdLogWaterOther"
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-2.5 py-1.5 text-xs font-mono focus:border-amber-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Notes</label>
+                    <input type="text" name="notes" id="editProdLogNotes"
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-2.5 py-1.5 text-xs focus:border-amber-500 focus:outline-none">
+                </div>
+            </div>
+
+            <div class="pt-3 flex items-center justify-end gap-2.5">
+                <button type="button" onclick="closeModal('editProdLogModal')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-300 dark:hover:bg-slate-700 transition cursor-pointer">
+                    Cancel
+                </button>
+                <button type="submit" class="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 text-xs font-mono font-bold shadow-md shadow-amber-500/25 transition cursor-pointer active:scale-95">
+                    Save Telemetry Changes
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
 
 <!-- Print Report Modal -->
 <div id="printReportModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4">

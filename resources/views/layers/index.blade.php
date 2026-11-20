@@ -211,6 +211,7 @@
                         <th class="py-3 px-4">Feed Used</th>
                         <th class="py-3 px-4">Medications</th>
                         <th class="py-3 px-4">Notes</th>
+                        <th class="py-3 px-4 text-right">Action</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-200/70 dark:divide-slate-800/70">
@@ -231,7 +232,11 @@
                             </td>
                             <td class="py-3 px-4">
                                 @if ((float) ($l['feed_grams'] ?? 0) > 0)
-                                    <span>{{ number_format((float) $l['feed_grams'] / 1000, 2) }} kg</span>
+                                    @if ((float) ($l['feed_grams'] ?? 0) < 1000)
+                                        <span>{{ \App\Core\FarmService::fmtQty((float) $l['feed_grams']) }} g</span>
+                                    @else
+                                        <span>{{ \App\Core\FarmService::fmtQty((float) $l['feed_grams'] / 1000) }} kg</span>
+                                    @endif
                                     <span class="block text-[10px] text-emerald-600 dark:text-emerald-400">₦{{ number_format((float) $l['feed_cost_calculated'], 2) }}</span>
                                 @else
                                     <span class="text-slate-400">—</span>
@@ -252,10 +257,16 @@
                                 @endif
                             </td>
                             <td class="py-3 px-4 font-sans text-slate-500 dark:text-slate-400">{{ $l['notes'] ?: '—' }}</td>
+                            <td class="py-3 px-4 text-right whitespace-nowrap">
+                                <button type="button" onclick="openEditLayerLogModal({{ (int) $l['id'] }})"
+                                        class="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[10px] font-sans font-semibold transition cursor-pointer">
+                                    <i class="fa-solid fa-pen"></i> Edit
+                                </button>
+                            </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="8" class="py-8 text-center text-slate-400 dark:text-slate-500 font-sans text-xs">
+                            <td colspan="9" class="py-8 text-center text-slate-400 dark:text-slate-500 font-sans text-xs">
                                 No daily egg collections logged yet. Click <strong>"+ Log Daily Eggs &amp; Care"</strong> above to record your first collection.
                             </td>
                         </tr>
@@ -416,7 +427,7 @@
                 <div>
                     <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Feed Qty (kg / g)</label>
                     <div class="flex gap-1.5">
-                        <input type="number" step="0.01" min="0" name="feed_qty" placeholder="0"
+                        <input type="number" step="any" min="0" name="feed_qty" placeholder="0"
                                class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-2.5 py-2 font-mono outline-none focus:border-cyan-500">
                         <select name="feed_unit" class="rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-2 py-2 font-mono outline-none">
                             <option value="kg">kg</option>
@@ -441,7 +452,7 @@
                                 </span>
                             </label>
                             <div class="flex items-center gap-1 shrink-0">
-                                <input type="number" step="0.1" min="0" name="med_doses[{{ $item['id'] }}]" placeholder="Dose" disabled
+                                <input type="number" step="any" min="0" name="med_doses[{{ $item['id'] }}]" placeholder="Dose" disabled
                                        class="w-20 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-purple-600 dark:text-purple-300 px-2 py-1 text-[11px] font-mono outline-none disabled:opacity-40">
                                 <span class="text-[10px] font-mono text-slate-500">{{ $item['unit_label'] }}</span>
                             </div>
@@ -466,7 +477,190 @@
     </div>
 </div>
 
+<!-- MODAL 3: EDIT LAYER DAILY EGG LOG -->
+<div id="editLayerLogModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md hidden opacity-0 transition-opacity duration-300">
+    <div id="editLayerLogModalBox" class="glass-card max-w-lg w-full max-h-[90vh] overflow-y-auto rounded-3xl p-6 sm:p-7 border border-amber-500/40 relative transform scale-95 transition-transform duration-300">
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center">
+                    <i class="fa-solid fa-pen"></i>
+                </div>
+                <div>
+                    <h3 class="text-base font-bold text-slate-900 dark:text-white">Edit Layer Daily Egg Log</h3>
+                    <p id="editLayerLogSubtitle" class="text-[11px] text-slate-500 dark:text-slate-400"></p>
+                </div>
+            </div>
+            <button type="button" onclick="closeModal('editLayerLogModal')" class="text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <form method="POST" action="/?page=layers" class="space-y-3.5 text-xs">
+            @csrf
+            <input type="hidden" name="action" value="update_layer_daily_log">
+            <input type="hidden" name="log_id" id="editLayerLogId">
+            <input type="hidden" name="med_editor_present" value="1">
+
+            <div>
+                <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Collection Date</label>
+                <input type="date" name="log_date" id="editLayerLogDate" required
+                       class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 font-mono outline-none focus:border-amber-500">
+            </div>
+
+            <div class="grid grid-cols-3 gap-3">
+                <div>
+                    <label class="block text-[11px] font-medium text-amber-600 dark:text-amber-300 mb-1">Good Eggs (pcs)</label>
+                    <input type="number" name="good_eggs" id="editLayerLogGoodEggs" min="0" required
+                           class="w-full rounded-xl border border-amber-500/50 bg-white/90 dark:bg-slate-800/90 text-amber-600 dark:text-amber-300 font-bold px-3 py-2 font-mono outline-none focus:border-amber-500">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Cracked / Broken</label>
+                    <input type="number" name="cracked_eggs" id="editLayerLogCrackedEggs" min="0"
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 font-mono outline-none focus:border-amber-500">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-rose-500 mb-1">Mortality (birds)</label>
+                    <input type="number" name="mortality_count" id="editLayerLogMortality" min="0"
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-rose-500 font-bold px-3 py-2 font-mono outline-none focus:border-rose-500">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                <div class="sm:col-span-2">
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Feed Consumed (Refunds previous &amp; deducts updated)</label>
+                    <select name="feed_item_id" id="editLayerLogFeedItem"
+                            class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 font-mono outline-none focus:border-amber-500">
+                        <option value="">-- No Feed Deducted --</option>
+                        @foreach ($feedItems as $fi)
+                            <option value="{{ $fi['id'] }}">{{ $fi['item_name'] }} ({{ number_format((float) $fi['total_quantity_g_or_ml'] / 1000, 1) }} kg left)</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Feed Qty (kg / g)</label>
+                    <div class="flex gap-1.5">
+                        <input type="number" step="any" min="0" name="feed_qty" id="editLayerLogFeedQty" placeholder="0"
+                               class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-2.5 py-2 font-mono outline-none focus:border-amber-500">
+                        <select name="feed_unit" id="editLayerLogFeedUnit" class="rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-2 py-2 font-mono outline-none">
+                            <option value="kg">kg</option>
+                            <option value="g">g</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1.5">Medications &amp; Supplements Used (Optional)</label>
+                <div id="editLayerLogMedList" class="max-h-36 overflow-y-auto space-y-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900/60 p-2.5">
+                    @forelse ($medItems as $item)
+                        <div class="flex items-center justify-between gap-2 bg-white dark:bg-slate-800/90 rounded-lg px-2.5 py-1.5 border border-slate-200 dark:border-slate-700">
+                            <label class="flex items-center gap-2 min-w-0 cursor-pointer flex-1">
+                                <input type="checkbox" name="med_items[]" value="{{ $item['id'] }}" data-med-id="{{ $item['id'] }}"
+                                       onchange="const inp = this.closest('div').querySelector('input[type=number]'); inp.disabled = !this.checked; if(!this.checked) inp.value=''; else inp.focus();"
+                                       class="rounded text-emerald-500 focus:ring-emerald-500">
+                                <span class="text-[11px] font-medium text-slate-800 dark:text-slate-100 truncate">
+                                    {{ $item['item_name'] }}
+                                    <span class="font-mono text-[10px] text-slate-500 dark:text-slate-400">({{ \App\Core\FarmService::fmtQty((float)$item['total_quantity_g_or_ml']) }}{{ $item['unit_label'] }})</span>
+                                </span>
+                            </label>
+                            <div class="flex items-center gap-1 shrink-0">
+                                <input type="number" step="any" min="0" name="med_doses[{{ $item['id'] }}]" data-med-dose="{{ $item['id'] }}" placeholder="Dose" disabled
+                                       class="w-20 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-purple-600 dark:text-purple-300 px-2 py-1 text-[11px] font-mono outline-none disabled:opacity-40">
+                                <span class="text-[10px] font-mono text-slate-500">{{ $item['unit_label'] }}</span>
+                            </div>
+                        </div>
+                    @empty
+                        <p class="text-[11px] text-slate-400 italic py-1">No medications in store yet.</p>
+                    @endforelse
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Notes</label>
+                <input type="text" name="notes" id="editLayerLogNotes" placeholder="Notes"
+                       class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 outline-none focus:border-amber-500">
+            </div>
+
+            <div class="pt-2 flex justify-end gap-2.5">
+                <button type="button" onclick="closeModal('editLayerLogModal')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold cursor-pointer">Cancel</button>
+                <button type="submit" class="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-mono font-bold shadow-md cursor-pointer">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
+  window.layerLogsEditMap = <?php
+  $layerEditMap = [];
+  foreach ($logs ?? [] as $_ll) {
+      $llId = (int) ($_ll['id'] ?? 0);
+      $layerEditMap[$llId] = [
+          'id' => $llId,
+          'flock_code' => $_ll['flock_code'] ?? '',
+          'flock_name' => $_ll['flock_name'] ?? '',
+          'log_date' => $_ll['log_date'] ?? '',
+          'good_eggs' => (int) ($_ll['good_eggs'] ?? 0),
+          'cracked_eggs' => (int) ($_ll['cracked_eggs'] ?? 0),
+          'mortality_count' => (int) ($_ll['mortality_count'] ?? 0),
+          'feed_item_id' => (int) ($_ll['feed_item_id'] ?? 0),
+          'feed_grams' => (float) ($_ll['feed_grams'] ?? 0),
+          'medications_used' => $_ll['medications_used'] ?? [],
+          'notes' => $_ll['notes'] ?? '',
+      ];
+  }
+  echo json_encode($layerEditMap, JSON_UNESCAPED_UNICODE);
+  ?>;
+
+  function openEditLayerLogModal(logId) {
+    const l = window.layerLogsEditMap[String(logId)] || window.layerLogsEditMap[logId];
+    if (!l) return;
+    document.getElementById('editLayerLogId').value = l.id;
+    document.getElementById('editLayerLogSubtitle').textContent = (l.flock_code || '') + (l.flock_name ? ' • ' + l.flock_name : '');
+    document.getElementById('editLayerLogDate').value = l.log_date || '';
+    document.getElementById('editLayerLogGoodEggs').value = l.good_eggs ?? 0;
+    document.getElementById('editLayerLogCrackedEggs').value = l.cracked_eggs ?? 0;
+    document.getElementById('editLayerLogMortality').value = l.mortality_count ?? 0;
+    document.getElementById('editLayerLogFeedItem').value = l.feed_item_id ? String(l.feed_item_id) : '';
+    const g = parseFloat(l.feed_grams || 0);
+    if (g > 0 && g < 1000) {
+      document.getElementById('editLayerLogFeedUnit').value = 'g';
+      document.getElementById('editLayerLogFeedQty').value = parseFloat(g.toFixed(4));
+    } else if (g >= 1000) {
+      document.getElementById('editLayerLogFeedUnit').value = 'kg';
+      document.getElementById('editLayerLogFeedQty').value = parseFloat((g / 1000).toFixed(4));
+    } else {
+      document.getElementById('editLayerLogFeedUnit').value = 'kg';
+      document.getElementById('editLayerLogFeedQty').value = 0;
+    }
+    document.getElementById('editLayerLogNotes').value = l.notes || '';
+
+    const container = document.getElementById('editLayerLogMedList');
+    if (container) {
+      container.querySelectorAll('input[type="checkbox"][data-med-id]').forEach((cb) => {
+        cb.checked = false;
+      });
+      container.querySelectorAll('input[type="number"][data-med-dose]').forEach((inp) => {
+        inp.disabled = true;
+        inp.value = '';
+      });
+      const medEntries = Array.isArray(l.medications_used) ? l.medications_used : [];
+      medEntries.forEach((mu) => {
+        const mId = String(mu.item_id || mu.med_item_id || '');
+        const dose = mu.dose ?? mu.dose_g_ml ?? '';
+        if (!mId) return;
+        const cb = container.querySelector(`input[type="checkbox"][data-med-id="${mId}"]`);
+        const inp = container.querySelector(`input[type="number"][data-med-dose="${mId}"]`);
+        if (cb && inp) {
+          cb.checked = true;
+          inp.disabled = false;
+          inp.value = dose;
+        }
+      });
+    }
+
+    openModal('editLayerLogModal');
+  }
+
   function openLayerDailyModal(flockId) {
     const sel = document.getElementById('layerLogFlockSelect');
     if (sel && flockId) {

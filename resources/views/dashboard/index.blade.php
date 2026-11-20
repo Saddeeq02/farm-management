@@ -739,7 +739,7 @@
           <option value="Vaccine">Vaccine</option>
           <option value="Sanitation">Sanitation</option>
         </select>
-        <input type="number" step="0.01" name="package_size_qty" placeholder="Pkg Size (e.g. 50)" required class="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-slate-900 dark:text-white outline-none">
+        <input type="number" step="any" min="0.0001" name="package_size_qty" placeholder="Pkg Size (e.g. 50)" required class="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-slate-900 dark:text-white outline-none">
         <input type="number" step="0.01" name="purchase_price" placeholder="Cost (₦)" required class="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-slate-900 dark:text-white outline-none">
         <button type="submit" class="py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-bold hover:from-emerald-400 hover:to-teal-400 transition cursor-pointer">
           Compute & Store

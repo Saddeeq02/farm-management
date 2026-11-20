@@ -58,7 +58,7 @@
                     </div>
                     <div id="gasWeightWrapper">
                         <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Gas Weight (kg)</label>
-                        <input type="number" step="0.1" name="gas_weight_kg" placeholder="25.0" value="25"
+                        <input type="number" step="any" min="0" name="gas_weight_kg" placeholder="25.0" value="25"
                                class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-1.5 text-xs font-mono focus:border-emerald-500 focus:outline-none">
                     </div>
                 </div>
@@ -122,12 +122,12 @@
                     </div>
                     <div>
                         <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Temp (°C)</label>
-                        <input type="number" step="0.1" name="temperature_c" placeholder="37.5"
+                        <input type="number" step="any" name="temperature_c" placeholder="37.5"
                                class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-2.5 py-1.5 text-xs font-mono focus:border-emerald-500 focus:outline-none">
                     </div>
                     <div>
                         <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Humidity (%)</label>
-                        <input type="number" step="0.5" name="humidity_pct" placeholder="58.0"
+                        <input type="number" step="any" name="humidity_pct" placeholder="58.0"
                                class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-2.5 py-1.5 text-xs font-mono focus:border-emerald-500 focus:outline-none">
                     </div>
                 </div>
@@ -250,6 +250,10 @@
 
                     <!-- One-Click UI Transition ("Push to Production" or "Client Collection") -->
                     <div class="flex flex-wrap items-center gap-2">
+                        <button type="button" onclick="openEditIncBatchModal({{ (int)$ib['id'] }})"
+                                class="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer">
+                            <i class="fa-solid fa-pen-to-square"></i> Edit
+                        </button>
                         @if (!empty($ib['is_client_service']))
                             <span class="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200">
                                 Fee: <strong>₦{{ number_format($ib['service_fee'], 0) }}</strong> • Paid: <strong class="text-emerald-600 dark:text-emerald-400">₦{{ number_format($ib['amount_paid'], 0) }}</strong>
@@ -525,7 +529,7 @@
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="block text-[11px] font-medium text-amber-600 dark:text-amber-300 mb-1">First Gas Intake (kg)</label>
-                    <input type="number" step="0.1" name="initial_gas_kg" placeholder="25.0" min="0" required
+                    <input type="number" step="any" name="initial_gas_kg" placeholder="25.0" min="0" required
                            class="w-full rounded-xl border border-amber-500/40 bg-amber-500/10 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-amber-400 focus:outline-none">
                 </div>
                 <div>
@@ -583,6 +587,191 @@ function toggleClientHatchFields(ownership) {
         if (isClient) eggCostInput.value = '0';
     }
 }
+
+window.incBatchesEditMap = <?php
+$incEditMap = [];
+foreach ($incubationBatches ?? [] as $_ib) {
+    $ibId = (int) ($_ib['id'] ?? 0);
+    $incEditMap[$ibId] = [
+        'id' => $ibId,
+        'batch_code' => $_ib['batch_code'] ?? '',
+        'species' => $_ib['species'] ?? 'chicken',
+        'setter_id' => $_ib['setter_id'] ?? 'Setter A',
+        'parent_flock_info' => $_ib['parent_flock_info'] ?? '',
+        'flock_age_weeks' => (int) ($_ib['flock_age_weeks'] ?? 0),
+        'eggs_set' => (int) ($_ib['eggs_set'] ?? 0),
+        'start_date' => $_ib['start_date'] ?? '',
+        'status' => $_ib['status'] ?? 'Active',
+        'ownership_type' => !empty($_ib['is_client_service']) ? 'Client' : 'Farm',
+        'client_name' => $_ib['client_name'] ?? '',
+        'client_phone' => $_ib['client_phone'] ?? '',
+        'service_fee' => (float) ($_ib['service_fee'] ?? 0),
+        'egg_cost' => (float) ($_ib['egg_cost'] ?? ($_ib['metrics']['egg_cost'] ?? 0)),
+    ];
+}
+echo json_encode($incEditMap, JSON_UNESCAPED_UNICODE);
+?>;
+
+function openEditIncBatchModal(batchId) {
+    const b = window.incBatchesEditMap[String(batchId)] || window.incBatchesEditMap[batchId];
+    if (!b) return;
+    document.getElementById('editIncBatchId').value = b.id;
+    document.getElementById('editIncBatchCode').value = b.batch_code || '';
+    document.getElementById('editIncStartDate').value = b.start_date || '';
+    document.getElementById('editIncSpecies').value = b.species || 'chicken';
+    document.getElementById('editIncSetterId').value = b.setter_id || 'Setter A';
+    document.getElementById('editIncParentInfo').value = b.parent_flock_info || '';
+    document.getElementById('editIncFlockAge').value = b.flock_age_weeks ?? 0;
+    document.getElementById('editIncEggsSet').value = b.eggs_set ?? 1;
+
+    const statusSel = document.getElementById('editIncStatus');
+    if (statusSel) {
+        if (b.status && ![...statusSel.options].some((o) => o.value === b.status)) {
+            const opt = document.createElement('option');
+            opt.value = b.status;
+            opt.textContent = b.status;
+            statusSel.appendChild(opt);
+        }
+        statusSel.value = b.status || 'Active';
+    }
+
+    const isClient = b.ownership_type === 'Client';
+    document.getElementById('editIncClientFields').classList.toggle('hidden', !isClient);
+    document.getElementById('editIncFarmCostWrap').classList.toggle('hidden', isClient);
+    document.getElementById('editIncClientName').value = b.client_name || '';
+    document.getElementById('editIncClientPhone').value = b.client_phone || '';
+    document.getElementById('editIncServiceFee').value = b.service_fee ?? 0;
+    document.getElementById('editIncEggCost').value = b.egg_cost ?? 0;
+
+    openModal('editIncubationBatchModal');
+}
 </script>
+
+<!-- MODAL: EDIT INCUBATION BATCH -->
+<div id="editIncubationBatchModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md hidden opacity-0 transition-opacity duration-300">
+    <div id="editIncubationBatchModalBox" class="glass-card max-w-lg w-full max-h-[90vh] overflow-y-auto rounded-3xl p-6 sm:p-7 border border-amber-500/40 relative transform scale-95 transition-transform duration-300">
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center">
+                    <i class="fa-solid fa-pen-to-square"></i>
+                </div>
+                <div>
+                    <h3 class="text-base font-bold text-slate-900 dark:text-white">Edit Incubator Batch</h3>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400">Update batch details, species, egg count, or client billing.</p>
+                </div>
+            </div>
+            <button type="button" onclick="closeModal('editIncubationBatchModal')" class="text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <form method="POST" action="/?page=incubation" class="space-y-3 text-xs">
+            @csrf
+            <input type="hidden" name="action" value="update_incubation_batch">
+            <input type="hidden" name="incubation_batch_id" id="editIncBatchId">
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Batch Code</label>
+                    <input type="text" name="batch_code" id="editIncBatchCode" required
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 font-mono focus:border-amber-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Start Date</label>
+                    <input type="date" name="start_date" id="editIncStartDate" required
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 font-mono focus:border-amber-500 focus:outline-none">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Species</label>
+                    <select name="species" id="editIncSpecies"
+                            class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 font-semibold focus:border-amber-500 focus:outline-none">
+                        <option value="chicken">Chicken (21 Days)</option>
+                        <option value="turkey">Turkey (28 Days)</option>
+                        <option value="duck">Duck - Pekin/Mallard (28 Days)</option>
+                        <option value="muscovy_duck">Muscovy Duck (35 Days)</option>
+                        <option value="guinea_fowl">Guinea Fowl (28 Days)</option>
+                        <option value="quail">Quail (17 Days)</option>
+                        <option value="goose">Goose (30 Days)</option>
+                        <option value="ostrich">Ostrich (42 Days)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Setter Unit</label>
+                    <input type="text" name="setter_id" id="editIncSetterId"
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 focus:border-amber-500 focus:outline-none">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="sm:col-span-2">
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Parent Flock / Source</label>
+                    <input type="text" name="parent_flock_info" id="editIncParentInfo"
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 focus:border-amber-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Parent Age (Wks)</label>
+                    <input type="number" name="flock_age_weeks" id="editIncFlockAge" min="0"
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 font-mono focus:border-amber-500 focus:outline-none">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Eggs Set</label>
+                    <input type="number" name="eggs_set" id="editIncEggsSet" min="1" required
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 font-mono focus:border-amber-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Status</label>
+                    <select name="status" id="editIncStatus"
+                            class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 focus:border-amber-500 focus:outline-none">
+                        <option value="Active">Active</option>
+                        <option value="Completed">Completed</option>
+                        <option value="Moved to Production">Moved to Production</option>
+                        <option value="Collected">Collected</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="editIncFarmCostWrap">
+                <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Egg Purchase / Stock Cost (₦)</label>
+                <input type="number" step="any" min="0" name="egg_cost" id="editIncEggCost"
+                       class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 font-mono focus:border-amber-500 focus:outline-none">
+            </div>
+
+            <div id="editIncClientFields" class="hidden space-y-2.5 p-3 rounded-2xl bg-purple-500/10 border border-purple-500/30">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <div>
+                        <label class="block text-[11px] font-medium text-purple-700 dark:text-purple-300 mb-1">Client Name</label>
+                        <input type="text" name="client_name" id="editIncClientName"
+                               class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-2.5 py-1.5 text-xs focus:border-purple-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-medium text-purple-700 dark:text-purple-300 mb-1">Client Phone</label>
+                        <input type="text" name="client_phone" id="editIncClientPhone"
+                               class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-2.5 py-1.5 text-xs font-mono focus:border-purple-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-medium text-purple-700 dark:text-purple-300 mb-1">Service Fee (₦)</label>
+                        <input type="number" step="any" min="0" name="service_fee" id="editIncServiceFee"
+                               class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-2.5 py-1.5 text-xs font-mono focus:border-purple-500 focus:outline-none">
+                    </div>
+                </div>
+            </div>
+
+            <div class="pt-2 flex items-center justify-end gap-2.5">
+                <button type="button" onclick="closeModal('editIncubationBatchModal')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold cursor-pointer">
+                    Cancel
+                </button>
+                <button type="submit" class="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-mono font-bold shadow-md cursor-pointer">
+                    Save Batch Changes
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
 @endsection
 
