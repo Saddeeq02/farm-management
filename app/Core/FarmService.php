@@ -1747,15 +1747,33 @@ class FarmService
             $fixedCapitalTotal += (float) $fa['purchase_cost'];
             $monthlyDepTotal += (float) $fa['monthly_depreciation'];
         }
-        $annualRent = (float) ($rent['annual_farm_rent'] ?? 0);
+        $annualRent = (float) ($rent['annual_rent'] ?? $rent['annual_farm_rent'] ?? 0);
         $monthlyRent = round($annualRent / 12.0, 2);
-        $monthlyOverhead = (float) ($rent['monthly_general_expenses'] ?? 0);
+        $totalGeneralOverhead = (float) ($rent['total_general_expenses'] ?? 0);
+        $monthlyOverhead = (float) ($rent['monthly_general_expenses'] ?? $totalGeneralOverhead);
+
+        $catTotalsMap = [];
+        foreach ($generalExpenses as $ge) {
+            $cat = trim((string) ($ge['category'] ?? 'General / Other')) ?: 'General / Other';
+            if (!isset($catTotalsMap[$cat])) {
+                $catTotalsMap[$cat] = ['category' => $cat, 'total' => 0.0, 'count' => 0];
+            }
+            $catTotalsMap[$cat]['total'] = round($catTotalsMap[$cat]['total'] + (float) ($ge['amount'] ?? 0), 2);
+            $catTotalsMap[$cat]['count']++;
+        }
+        $generalExpensesByCategory = array_values($catTotalsMap);
+        usort($generalExpensesByCategory, fn($a, $b) => $b['total'] <=> $a['total']);
 
         // Flow / Current Assets
         $liveFlockAssetValue = 0.0;
+        $projectedLiveFlockMarketValue = 0.0;
         $totalDirectDoc = 0.0;
+        $totalProdDirectDoc = 0.0;
         $totalFeedConsumed = 0.0;
         $totalMedsVaccines = 0.0;
+        $totalLaborCost = 0.0;
+        $totalSanitationCost = 0.0;
+        $totalWaterOtherCost = 0.0;
         $totalLaborSanitOther = 0.0;
         $totalBatchOverheadShare = 0.0;
         $totalProdCost = 0.0;
@@ -1766,26 +1784,38 @@ class FarmService
         $batchRows = [];
         foreach ($prodBatches as $pb) {
             $m = $pb['metrics'];
-            $remBirds = (int) ($m['remaining_live_birds'] ?? 0);
-            $liveValue = round($remBirds * (float) ($m['cost_per_bird'] ?? 0), 2);
+            $remBirds = (int) ($m['current_in_house_birds'] ?? $m['remaining_live_birds'] ?? ($pb['current_bird_count'] ?? 0));
+            $soldBirds = (int) ($m['total_birds_sold'] ?? $m['birds_sold'] ?? 0);
+            $accumCost = (float) ($m['total_accumulated_cost'] ?? 0);
+            $liveValue = ($soldBirds === 0 && $remBirds > 0)
+                ? round($accumCost, 2)
+                : round($remBirds * (float) ($m['cost_per_bird'] ?? 0), 2);
+            $sellPricePerBird = (float) ($m['target_selling_price'] ?? $m['recommended_selling_price'] ?? 0);
             if (($pb['status'] ?? '') === 'Active') {
                 $liveFlockAssetValue += $liveValue;
+                $projectedLiveFlockMarketValue += round($remBirds * ($sellPricePerBird > 0 ? $sellPricePerBird : (float) ($m['cost_per_bird'] ?? 0)), 2);
             }
             $carriedBase = (float) ($m['incubation_cost'] ?? 0);
             $feedCost = (float) ($m['total_feed_cost'] ?? 0);
             $medCost = (float) ($m['total_med_cost'] ?? 0);
-            $otherOps = (float) ($m['total_labor_cost'] ?? 0) + (float) ($m['total_sanitation_cost'] ?? 0) + (float) ($m['total_water_other_cost'] ?? 0);
+            $laborCost = (float) ($m['total_labor_cost'] ?? 0);
+            $sanitCost = (float) ($m['total_sanitation_cost'] ?? 0);
+            $waterOtherCost = (float) ($m['total_water_other_cost'] ?? 0);
+            $otherOps = $laborCost + $sanitCost + $waterOtherCost;
             $rentShare = (float) ($m['house_rent'] ?? 0);
-            $accumCost = (float) ($m['total_accumulated_cost'] ?? 0);
-            $rev = (float) ($m['total_revenue'] ?? 0);
+            $rev = (float) ($m['realized_revenue'] ?? $m['total_revenue'] ?? 0);
             $rec = (float) ($m['total_receivables'] ?? 0);
             $collected = round(max(0.0, $rev - $rec), 2);
 
             if (empty($pb['incubation_batch_id'])) {
                 $totalDirectDoc += $carriedBase;
+                $totalProdDirectDoc += $carriedBase;
             }
             $totalFeedConsumed += $feedCost;
             $totalMedsVaccines += $medCost;
+            $totalLaborCost += $laborCost;
+            $totalSanitationCost += $sanitCost;
+            $totalWaterOtherCost += $waterOtherCost;
             $totalLaborSanitOther += $otherOps;
             $totalBatchOverheadShare += $rentShare;
             $totalProdCost += $accumCost;
@@ -1798,7 +1828,7 @@ class FarmService
                 'batch_code' => $pb['batch_code'],
                 'label' => $pb['flock_type'],
                 'status' => $pb['status'],
-                'units_label' => number_format((int) ($m['initial_birds'] ?? 0)) . ' init / ' . number_format($remBirds) . ' live / ' . number_format((int) ($m['birds_sold'] ?? 0)) . ' sold',
+                'units_label' => number_format((int) ($m['initial_birds'] ?? 0)) . ' init / ' . number_format($remBirds) . ' live / ' . number_format($soldBirds) . ' sold',
                 'base_cost' => $carriedBase,
                 'feed_med_cost' => $feedCost + $medCost,
                 'overhead_other' => $rentShare + $otherOps,
@@ -1812,12 +1842,21 @@ class FarmService
 
         $incubatorEggAssetValue = 0.0;
         $totalIncubationSpend = 0.0;
+        $totalIncubatorEggCost = 0.0;
+        $totalIncubatorGasCost = 0.0;
+        $totalIncubatorRepairCost = 0.0;
         $clientHatchBilled = 0.0;
         $clientHatchCollected = 0.0;
         $clientHatchReceivables = 0.0;
         foreach ($incBatches as $ib) {
             $incCost = (float) ($ib['metrics']['total_incubation_cost'] ?? $ib['total_batch_cost'] ?? 0);
+            $ibEggCost = (float) ($ib['egg_cost'] ?? 0);
+            $ibGasCost = (float) ($ib['metrics']['gas_cost'] ?? 0);
+            $ibRepairCost = (float) ($ib['metrics']['repair_cost'] ?? 0);
             $totalIncubationSpend += $incCost;
+            $totalIncubatorEggCost += $ibEggCost;
+            $totalIncubatorGasCost += $ibGasCost;
+            $totalIncubatorRepairCost += $ibRepairCost;
             $isClient = (($ib['ownership_type'] ?? 'Farm') === 'Client');
             if (!$isClient && ($ib['status'] ?? '') === 'Active') {
                 $incubatorEggAssetValue += $incCost;
@@ -1836,9 +1875,9 @@ class FarmService
                 'label' => ($ib['species_label'] ?? 'Hatchery') . ' • ' . ($ib['parent_flock_info'] ?? ''),
                 'status' => $ib['status'],
                 'units_label' => number_format((int) ($ib['eggs_set'] ?? 0)) . ' eggs • Day ' . (int) ($ib['incubation_day'] ?? 0),
-                'base_cost' => (float) ($ib['egg_cost'] ?? 0),
+                'base_cost' => $ibEggCost,
                 'feed_med_cost' => 0.0,
-                'overhead_other' => (float) ($ib['metrics']['gas_cost'] ?? 0) + (float) ($ib['metrics']['repair_cost'] ?? 0),
+                'overhead_other' => $ibGasCost + $ibRepairCost,
                 'total_cost' => $incCost,
                 'revenue_billed' => $svcFee,
                 'cash_collected' => $svcPaid,
@@ -1848,8 +1887,18 @@ class FarmService
         }
 
         $storeInventoryValue = 0.0;
+        $storeFeedValue = 0.0;
+        $storeMedValue = 0.0;
+        $totalInventoryPurchasedCost = 0.0;
         foreach ($invItems as $item) {
-            $storeInventoryValue += (float) ($item['total_quantity_g_or_ml'] ?? 0) * (float) ($item['unit_cost_per_g_or_ml'] ?? 0);
+            $remVal = (float) ($item['total_quantity_g_or_ml'] ?? 0) * (float) ($item['unit_cost_per_g_or_ml'] ?? 0);
+            $storeInventoryValue += $remVal;
+            $totalInventoryPurchasedCost += (float) ($item['total_cost'] ?? 0);
+            if (($item['category'] ?? '') === 'medicine') {
+                $storeMedValue += $remVal;
+            } else {
+                $storeFeedValue += $remVal;
+            }
         }
         $storeInventoryValue = round($storeInventoryValue, 2);
 
@@ -1877,6 +1926,7 @@ class FarmService
         // Layers Flocks & Egg Sales integration
         $layersOverview = $this->getLayersOverview();
         $totalLayerOperatingCost = 0.0;
+        $totalLayerPurchaseCost = 0.0;
         $layerSalesByFlock = [];
         $unassignedEggBilled = 0.0;
         $unassignedEggCollected = 0.0;
@@ -1905,10 +1955,13 @@ class FarmService
         foreach ($layersOverview['flocks'] as $lf) {
             $lfId = (int) $lf['id'];
             $lfTotalCost = (float) ($lf['total_cost'] ?? 0);
+            $lfPurchase = (float) ($lf['purchase_cost'] ?? 0);
             if (($lf['status'] ?? '') === 'Active') {
                 $liveFlockAssetValue += $lfTotalCost;
+                $projectedLiveFlockMarketValue += $lfTotalCost;
             }
-            $totalDirectDoc += (float) ($lf['purchase_cost'] ?? 0);
+            $totalDirectDoc += $lfPurchase;
+            $totalLayerPurchaseCost += $lfPurchase;
             $totalFeedConsumed += (float) ($lf['total_feed_cost'] ?? 0);
             $totalMedsVaccines += (float) ($lf['total_med_cost'] ?? 0);
             $totalLayerOperatingCost += $lfTotalCost;
@@ -1922,7 +1975,7 @@ class FarmService
                 'label' => ($lf['species_label'] ?? 'Layer') . ' • ' . $lf['flock_name'],
                 'status' => $lf['status'],
                 'units_label' => number_format((int) $lf['current_bird_count']) . ' live • ' . number_format((int) $lf['total_good_eggs']) . ' eggs',
-                'base_cost' => round((float) ($lf['purchase_cost'] ?? 0), 2),
+                'base_cost' => round($lfPurchase, 2),
                 'feed_med_cost' => round((float) ($lf['total_feed_cost'] ?? 0) + (float) ($lf['total_med_cost'] ?? 0), 2),
                 'overhead_other' => 0.0,
                 'total_cost' => $lfTotalCost,
@@ -1951,13 +2004,37 @@ class FarmService
             ];
         }
 
+        $eggStockroomValue = 0.0;
+        $eggStockroomMarketValue = 0.0;
+        $eggStockroomPcs = 0;
+        foreach (($layersOverview['sources'] ?? []) as $src) {
+            $availEggs = max(0, (int) ($src['available_eggs'] ?? 0));
+            $eggStockroomPcs += $availEggs;
+            $eggStockroomValue += round($availEggs * (float) ($src['cost_per_egg'] ?? 0), 2);
+            $eggStockroomMarketValue += round($availEggs * (float) ($src['recommended_price_per_egg'] ?? ($src['cost_per_egg'] ?? 0)), 2);
+        }
+
         $billedAll += (float) ($layersOverview['summary']['egg_sales_billed'] ?? 0);
         $cashCollectedAll += (float) ($layersOverview['summary']['egg_sales_collected'] ?? 0);
         $receivablesAll += (float) ($layersOverview['summary']['egg_sales_receivables'] ?? 0);
 
         $totalOperatingCost = round($totalProdCost + $untransferredIncCost + $totalLayerOperatingCost, 2);
-        $totalFlowAssets = round($liveFlockAssetValue + $incubatorEggAssetValue + $storeInventoryValue + $receivablesAll, 2);
+        $totalFlowAssets = round($liveFlockAssetValue + $incubatorEggAssetValue + $eggStockroomValue + $storeInventoryValue + $receivablesAll, 2);
         $netFarmProfit = round($billedAll - $totalOperatingCost, 2);
+        $totalNetWorth = round($fixedCapitalTotal + $totalFlowAssets + $cashCollectedAll, 2);
+        $projectedMarketNetWorth = round($fixedCapitalTotal + $projectedLiveFlockMarketValue + $incubatorEggAssetValue + $eggStockroomMarketValue + $storeInventoryValue + $receivablesAll + $cashCollectedAll, 2);
+        $grandTotalAllCosts = round(
+            $totalIncubationSpend
+            + $totalDirectDoc
+            + $totalFeedConsumed
+            + $totalMedsVaccines
+            + $totalLaborSanitOther
+            + $storeInventoryValue
+            + $totalGeneralOverhead
+            + $fixedCapitalTotal
+            + $annualRent,
+            2
+        );
 
         return [
             'fixed_assets' => $fixedAssets,
@@ -1970,22 +2047,44 @@ class FarmService
             'monthly_fixed_burden' => round($monthlyDepTotal + $monthlyRent + $monthlyOverhead, 2),
 
             'live_flock_asset_value' => round($liveFlockAssetValue, 2),
+            'projected_live_flock_market_value' => round($projectedLiveFlockMarketValue, 2),
             'incubator_egg_asset_value' => round($incubatorEggAssetValue, 2),
+            'egg_stockroom_value' => round($eggStockroomValue, 2),
+            'egg_stockroom_market_value' => round($eggStockroomMarketValue, 2),
+            'egg_stockroom_pcs' => $eggStockroomPcs,
             'store_inventory_value' => $storeInventoryValue,
+            'store_feed_value' => round($storeFeedValue, 2),
+            'store_med_value' => round($storeMedValue, 2),
+            'total_inventory_purchased_cost' => round($totalInventoryPurchasedCost, 2),
             'accounts_receivable' => round($receivablesAll, 2),
             'cash_collected' => round($cashCollectedAll, 2),
             'total_flow_assets' => $totalFlowAssets,
+            'total_net_worth' => $totalNetWorth,
+            'projected_market_net_worth' => $projectedMarketNetWorth,
 
             'total_sales_billed' => round($billedAll, 2),
             'spend_incubation_and_doc' => round($totalIncubationSpend + $totalDirectDoc, 2),
+            'spend_direct_flock_purchases' => round($totalDirectDoc, 2),
+            'spend_production_doc' => round($totalProdDirectDoc, 2),
+            'spend_layer_purchases' => round($totalLayerPurchaseCost, 2),
+            'spend_incubator_eggs' => round($totalIncubatorEggCost, 2),
+            'spend_incubator_gas' => round($totalIncubatorGasCost, 2),
+            'spend_incubator_repairs' => round($totalIncubatorRepairCost, 2),
             'spend_feed_consumed' => round($totalFeedConsumed, 2),
             'spend_meds_vaccines' => round($totalMedsVaccines, 2),
+            'spend_direct_labor' => round($totalLaborCost, 2),
+            'spend_sanitation' => round($totalSanitationCost, 2),
+            'spend_water_other' => round($totalWaterOtherCost, 2),
             'spend_labor_sanit_other' => round($totalLaborSanitOther, 2),
+            'spend_batch_rent_share' => round($totalBatchOverheadShare, 2),
+            'total_general_expenses_logged' => round($totalGeneralOverhead, 2),
             'spend_overhead_rent' => round($totalBatchOverheadShare + $monthlyOverhead, 2),
             'total_operating_cost' => $totalOperatingCost,
+            'grand_total_all_costs' => $grandTotalAllCosts,
             'net_farm_profit' => $netFarmProfit,
 
             'general_expenses' => $generalExpenses,
+            'general_expenses_by_category' => $generalExpensesByCategory,
             'batches' => $batchRows,
         ];
     }

@@ -89,14 +89,9 @@
                 <input type="hidden" name="action" value="add_general_expense">
                 <div class="grid grid-cols-2 gap-2.5">
                     <div>
-                        <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Category</label>
-                        <select name="category" class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-1.5 text-xs focus:border-cyan-500 focus:outline-none">
-                            <option value="Generator Fuel">Generator Fuel</option>
-                            <option value="Electricity">Electricity</option>
-                            <option value="Water / Borehole">Water / Borehole</option>
-                            <option value="Staff Salaries">Staff Salaries</option>
-                            <option value="Security / Other">Security / Other</option>
-                        </select>
+                        <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Category (Type Manually)</label>
+                        <input type="text" name="category" placeholder="e.g. Electricity, Generator, Machine..." required
+                               class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-1.5 text-xs focus:border-cyan-500 focus:outline-none">
                     </div>
                     <div>
                         <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Expense Date</label>

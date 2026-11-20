@@ -23,6 +23,48 @@
         </button>
     </div>
 
+    <!-- Total Net Worth & All-In Costs Executive Banner -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="glass-card rounded-2xl p-5 border border-emerald-500/40 bg-emerald-500/10">
+            <div class="flex items-center justify-between">
+                <span class="text-[11px] font-mono uppercase tracking-wider text-emerald-700 dark:text-emerald-300 font-bold">Total Farm Net Worth (At Cost)</span>
+                <i class="fa-solid fa-vault text-emerald-500 text-sm"></i>
+            </div>
+            <div class="text-2xl sm:text-3xl font-extrabold font-mono text-emerald-700 dark:text-emerald-300 mt-1">
+                ₦{{ number_format((float)($fin['total_net_worth'] ?? 0), 2) }}
+            </div>
+            <p class="text-[11px] text-slate-600 dark:text-slate-300 mt-1 font-mono">
+                Fixed Assets + Live Flocks + Incubator + Eggs + Store + Cash + Credit
+            </p>
+        </div>
+
+        <div class="glass-card rounded-2xl p-5 border border-cyan-500/40 bg-cyan-500/10">
+            <div class="flex items-center justify-between">
+                <span class="text-[11px] font-mono uppercase tracking-wider text-cyan-700 dark:text-cyan-300 font-bold">Projected Market Net Worth</span>
+                <i class="fa-solid fa-arrow-trend-up text-cyan-500 text-sm"></i>
+            </div>
+            <div class="text-2xl sm:text-3xl font-extrabold font-mono text-cyan-700 dark:text-cyan-300 mt-1">
+                ₦{{ number_format((float)($fin['projected_market_net_worth'] ?? 0), 2) }}
+            </div>
+            <p class="text-[11px] text-slate-600 dark:text-slate-300 mt-1 font-mono">
+                With live birds &amp; unsold eggs valued at target selling prices
+            </p>
+        </div>
+
+        <div class="glass-card rounded-2xl p-5 border border-amber-500/40 bg-amber-500/10">
+            <div class="flex items-center justify-between">
+                <span class="text-[11px] font-mono uppercase tracking-wider text-amber-700 dark:text-amber-300 font-bold">Grand Total All-In Costs &amp; Outlay</span>
+                <i class="fa-solid fa-layer-group text-amber-500 text-sm"></i>
+            </div>
+            <div class="text-2xl sm:text-3xl font-extrabold font-mono text-slate-900 dark:text-white mt-1">
+                ₦{{ number_format((float)($fin['grand_total_all_costs'] ?? 0), 2) }}
+            </div>
+            <p class="text-[11px] text-slate-600 dark:text-slate-300 mt-1 font-mono">
+                Flocks + Feed/Meds Used + Store Stock + General Overhead + Assets
+            </p>
+        </div>
+    </div>
+
     <!-- Top 4 Executive Financial KPIs -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div class="glass-card rounded-2xl p-4 border border-amber-500/30">
@@ -68,21 +110,24 @@
         </div>
     </div>
 
-    <!-- Flow / Current Assets vs Operating Outflows -->
+    <!-- Flow / Current Assets vs Complete Breakdown of All Costs -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <!-- Flow / Continuous Assets -->
         <div class="glass-card rounded-2xl p-5 space-y-4">
             <div class="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800 pb-3">
                 <div>
                     <h3 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                        <i class="fa-solid fa-water text-cyan-500"></i> Flow &amp; Current Assets (Working Capital)
+                        <i class="fa-solid fa-water text-cyan-500"></i> Flow &amp; Current Assets (Net Worth Breakdown)
                     </h3>
-                    <p class="text-[11px] text-slate-500 dark:text-slate-400">Assets continuously rotating through your hatchery, pens, store, and customers.</p>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400">Every live asset, stock item, receivable, and cash balance making up your farm's net worth.</p>
                 </div>
             </div>
             <div class="space-y-2.5 text-xs">
                 <div class="flex items-center justify-between p-3 rounded-xl bg-white/70 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800">
-                    <span class="font-medium text-slate-700 dark:text-slate-300">Live Flocks in Pens (At Cost)</span>
+                    <div>
+                        <span class="font-medium text-slate-700 dark:text-slate-300 block">Live Flocks in Pens (Production &amp; Layers at Cost)</span>
+                        <span class="text-[10px] font-mono text-emerald-600 dark:text-emerald-400">Projected Selling Value: ₦{{ number_format((float)($fin['projected_live_flock_market_value'] ?? 0), 2) }}</span>
+                    </div>
                     <span class="font-mono font-bold text-slate-900 dark:text-white">₦{{ number_format($fin['live_flock_asset_value'], 2) }}</span>
                 </div>
                 <div class="flex items-center justify-between p-3 rounded-xl bg-white/70 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800">
@@ -90,52 +135,166 @@
                     <span class="font-mono font-bold text-slate-900 dark:text-white">₦{{ number_format($fin['incubator_egg_asset_value'], 2) }}</span>
                 </div>
                 <div class="flex items-center justify-between p-3 rounded-xl bg-white/70 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800">
-                    <span class="font-medium text-slate-700 dark:text-slate-300">Feed, Vaccines &amp; Meds Remaining in Store</span>
+                    <div>
+                        <span class="font-medium text-slate-700 dark:text-slate-300 block">Unsold Eggs in Stockroom ({{ number_format((int)($fin['egg_stockroom_pcs'] ?? 0)) }} pcs at Cost)</span>
+                        <span class="text-[10px] font-mono text-amber-600 dark:text-amber-300">Market Value: ₦{{ number_format((float)($fin['egg_stockroom_market_value'] ?? 0), 2) }}</span>
+                    </div>
+                    <span class="font-mono font-bold text-slate-900 dark:text-white">₦{{ number_format((float)($fin['egg_stockroom_value'] ?? 0), 2) }}</span>
+                </div>
+                <div class="flex items-center justify-between p-3 rounded-xl bg-white/70 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800">
+                    <div>
+                        <span class="font-medium text-slate-700 dark:text-slate-300 block">Feed, Vaccines &amp; Meds Remaining in Store</span>
+                        <span class="text-[10px] font-mono text-slate-500 dark:text-slate-400">Feed Left: ₦{{ number_format((float)($fin['store_feed_value'] ?? 0), 2) }} • Meds Left: ₦{{ number_format((float)($fin['store_med_value'] ?? 0), 2) }}</span>
+                    </div>
                     <span class="font-mono font-bold text-slate-900 dark:text-white">₦{{ number_format($fin['store_inventory_value'], 2) }}</span>
                 </div>
                 <div class="flex items-center justify-between p-3 rounded-xl bg-white/70 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800">
-                    <span class="font-medium text-slate-700 dark:text-slate-300">Customer Receivables (Credit Owed)</span>
+                    <span class="font-medium text-slate-700 dark:text-slate-300">Fixed Assets Infrastructure (Pens, Generators, Machinery)</span>
+                    <span class="font-mono font-bold text-slate-900 dark:text-white">₦{{ number_format($fin['fixed_capital_total'], 2) }}</span>
+                </div>
+                <div class="flex items-center justify-between p-3 rounded-xl bg-white/70 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800">
+                    <span class="font-medium text-slate-700 dark:text-slate-300">Customer Receivables (Credit Owed to Farm)</span>
                     <span class="font-mono font-bold text-amber-600 dark:text-amber-400">₦{{ number_format($fin['accounts_receivable'], 2) }}</span>
                 </div>
-                <div class="flex items-center justify-between p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
-                    <span class="font-bold text-emerald-700 dark:text-emerald-300">Cash Collected from Sales</span>
-                    <span class="font-mono font-extrabold text-emerald-700 dark:text-emerald-300">₦{{ number_format($fin['cash_collected'], 2) }}</span>
+                <div class="flex items-center justify-between p-3 rounded-xl bg-white/70 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800">
+                    <span class="font-medium text-slate-700 dark:text-slate-300">Cash Collected from Sales</span>
+                    <span class="font-mono font-bold text-emerald-600 dark:text-emerald-400">₦{{ number_format($fin['cash_collected'], 2) }}</span>
+                </div>
+                <div class="flex items-center justify-between p-3.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40">
+                    <span class="font-bold text-emerald-700 dark:text-emerald-300">Total Farm Net Worth (At Cost)</span>
+                    <span class="font-mono text-sm font-extrabold text-emerald-700 dark:text-emerald-300">₦{{ number_format((float)($fin['total_net_worth'] ?? 0), 2) }}</span>
                 </div>
             </div>
         </div>
 
-        <!-- Operating Spend & Fixed Burden -->
+        <!-- Complete Breakdown of All Costs & Other Expenses -->
         <div class="glass-card rounded-2xl p-5 space-y-4">
             <div class="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800 pb-3">
                 <div>
                     <h3 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                        <i class="fa-solid fa-chart-pie text-emerald-500"></i> Whole-Farm Operating Spend &amp; Monthly Burden
+                        <i class="fa-solid fa-chart-pie text-emerald-500"></i> Complete Breakdown of All Farm Costs &amp; Other
                     </h3>
-                    <p class="text-[11px] text-slate-500 dark:text-slate-400">Where money is spent across all batches + fixed monthly farm commitments.</p>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400">Itemized breakdown of every cost category across birds, hatchery, feed, meds, labor, overhead, and store.</p>
                 </div>
             </div>
-            <div class="space-y-2.5 text-xs">
-                <div class="flex items-center justify-between p-3 rounded-xl bg-white/70 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800">
-                    <span class="font-medium text-slate-700 dark:text-slate-300">Incubation Eggs, Gas &amp; Direct DOC Purchases</span>
-                    <span class="font-mono font-bold text-slate-900 dark:text-white">₦{{ number_format($fin['spend_incubation_and_doc'], 2) }}</span>
+            <div class="space-y-2 text-xs">
+                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white/70 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800">
+                    <div>
+                        <span class="font-medium text-slate-700 dark:text-slate-300 block">Direct Flock Purchases (DOC, Growers &amp; Layers)</span>
+                        <span class="text-[10px] font-mono text-slate-500">Production Flocks: ₦{{ number_format((float)($fin['spend_production_doc'] ?? 0), 2) }} • Layers: ₦{{ number_format((float)($fin['spend_layer_purchases'] ?? 0), 2) }}</span>
+                    </div>
+                    <span class="font-mono font-bold text-slate-900 dark:text-white">₦{{ number_format((float)($fin['spend_direct_flock_purchases'] ?? 0), 2) }}</span>
                 </div>
-                <div class="flex items-center justify-between p-3 rounded-xl bg-white/70 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800">
+                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white/70 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800">
+                    <div>
+                        <span class="font-medium text-slate-700 dark:text-slate-300 block">Hatchery &amp; Incubator (Eggs Set, LPG Gas &amp; Repairs)</span>
+                        <span class="text-[10px] font-mono text-slate-500">Eggs: ₦{{ number_format((float)($fin['spend_incubator_eggs'] ?? 0), 0) }} • Gas: ₦{{ number_format((float)($fin['spend_incubator_gas'] ?? 0), 0) }} • Repairs: ₦{{ number_format((float)($fin['spend_incubator_repairs'] ?? 0), 0) }}</span>
+                    </div>
+                    <span class="font-mono font-bold text-slate-900 dark:text-white">₦{{ number_format((float)($fin['spend_incubator_eggs'] ?? 0) + (float)($fin['spend_incubator_gas'] ?? 0) + (float)($fin['spend_incubator_repairs'] ?? 0), 2) }}</span>
+                </div>
+                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white/70 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800">
                     <span class="font-medium text-slate-700 dark:text-slate-300">Feed Consumed Across All Flocks</span>
                     <span class="font-mono font-bold text-slate-900 dark:text-white">₦{{ number_format($fin['spend_feed_consumed'], 2) }}</span>
                 </div>
-                <div class="flex items-center justify-between p-3 rounded-xl bg-white/70 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800">
-                    <span class="font-medium text-slate-700 dark:text-slate-300">Medications &amp; Vaccines</span>
+                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white/70 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800">
+                    <span class="font-medium text-slate-700 dark:text-slate-300">Medications &amp; Vaccines Consumed</span>
                     <span class="font-mono font-bold text-slate-900 dark:text-white">₦{{ number_format($fin['spend_meds_vaccines'], 2) }}</span>
                 </div>
-                <div class="flex items-center justify-between p-3 rounded-xl bg-white/70 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800">
-                    <span class="font-medium text-slate-700 dark:text-slate-300">Labor, Sanitation, Water &amp; Rent Share</span>
-                    <span class="font-mono font-bold text-slate-900 dark:text-white">₦{{ number_format($fin['spend_labor_sanit_other'] + $fin['spend_overhead_rent'], 2) }}</span>
+                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white/70 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800">
+                    <div>
+                        <span class="font-medium text-slate-700 dark:text-slate-300 block">Daily Pen Operations (Labor, Sanitation &amp; Water/Other)</span>
+                        <span class="text-[10px] font-mono text-slate-500">Labor: ₦{{ number_format((float)($fin['spend_direct_labor'] ?? 0), 0) }} • Sanit: ₦{{ number_format((float)($fin['spend_sanitation'] ?? 0), 0) }} • Water/Other: ₦{{ number_format((float)($fin['spend_water_other'] ?? 0), 0) }}</span>
+                    </div>
+                    <span class="font-mono font-bold text-slate-900 dark:text-white">₦{{ number_format($fin['spend_labor_sanit_other'], 2) }}</span>
                 </div>
-                <div class="flex items-center justify-between p-3 rounded-xl bg-amber-500/10 border border-amber-500/30">
-                    <span class="font-bold text-amber-700 dark:text-amber-300">Monthly Fixed Burden (Rent + Overhead + Depreciation)</span>
-                    <span class="font-mono font-extrabold text-amber-700 dark:text-amber-300">₦{{ number_format($fin['monthly_fixed_burden'], 2) }}/mo</span>
+                <div class="flex items-center justify-between p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30">
+                    <div>
+                        <span class="font-semibold text-cyan-700 dark:text-cyan-300 block">General Farm Overhead &amp; Other Expenses Logged</span>
+                        <span class="text-[10px] font-mono text-slate-500 dark:text-slate-400">Accrued to active flocks so far: ₦{{ number_format((float)($fin['spend_batch_rent_share'] ?? 0), 2) }}</span>
+                    </div>
+                    <span class="font-mono font-bold text-cyan-700 dark:text-cyan-300">₦{{ number_format((float)($fin['total_general_expenses_logged'] ?? 0), 2) }}</span>
+                </div>
+                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white/70 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800">
+                    <div>
+                        <span class="font-medium text-slate-700 dark:text-slate-300 block">Unused Feed &amp; Meds Stock Remaining in Store</span>
+                        <span class="text-[10px] font-mono text-slate-500">Total Inventory Purchased: ₦{{ number_format((float)($fin['total_inventory_purchased_cost'] ?? 0), 2) }}</span>
+                    </div>
+                    <span class="font-mono font-bold text-slate-900 dark:text-white">₦{{ number_format($fin['store_inventory_value'], 2) }}</span>
+                </div>
+                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white/70 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800">
+                    <div>
+                        <span class="font-medium text-slate-700 dark:text-slate-300 block">Fixed Assets &amp; Annual Farm Rent</span>
+                        <span class="text-[10px] font-mono text-slate-500">Assets: ₦{{ number_format($fin['fixed_capital_total'], 0) }} • Annual Rent: ₦{{ number_format($fin['annual_farm_rent'], 0) }}</span>
+                    </div>
+                    <span class="font-mono font-bold text-slate-900 dark:text-white">₦{{ number_format($fin['total_fixed_and_rent'], 2) }}</span>
+                </div>
+                <div class="flex items-center justify-between p-3 rounded-xl bg-amber-500/15 border border-amber-500/40">
+                    <div>
+                        <span class="font-bold text-amber-700 dark:text-amber-300 block">Grand Total All-In Costs &amp; Capital Outlay</span>
+                        <span class="text-[10px] font-mono text-amber-700/80 dark:text-amber-300/80">Active Flock Operating Cost: ₦{{ number_format($fin['total_operating_cost'], 2) }}</span>
+                    </div>
+                    <span class="font-mono text-sm font-extrabold text-amber-700 dark:text-amber-300">₦{{ number_format((float)($fin['grand_total_all_costs'] ?? 0), 2) }}</span>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- General Farm Overhead & Other Expenses Breakdown (Manual Categories) -->
+    <div class="glass-card rounded-2xl p-5 space-y-4 border border-cyan-500/30">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 dark:border-slate-800 pb-3">
+            <div>
+                <h3 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <i class="fa-solid fa-bolt text-cyan-500"></i> General Farm Overhead &amp; Other Expenses Breakdown
+                </h3>
+                <p class="text-[11px] text-slate-500 dark:text-slate-400">All manually categorized farm expenses (Electricity, Generator, Machinery, Salaries, Utilities, etc.).</p>
+            </div>
+            <div class="flex items-center gap-2.5">
+                <span class="text-xs font-mono font-bold px-3 py-1 rounded-xl bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30">
+                    Total Overhead: ₦{{ number_format((float)($fin['total_general_expenses_logged'] ?? 0), 2) }}
+                </span>
+                <a href="/?page=inventory" class="px-3 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-mono font-bold transition">
+                    + Log Expense
+                </a>
+            </div>
+        </div>
+
+        @if (!empty($fin['general_expenses_by_category']))
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 font-mono text-xs">
+                @foreach ($fin['general_expenses_by_category'] as $catRow)
+                    <div class="rounded-xl bg-white/75 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 p-3">
+                        <span class="block text-[10px] font-sans font-semibold uppercase text-cyan-700 dark:text-cyan-300 truncate">{{ $catRow['category'] }}</span>
+                        <span class="text-sm font-bold text-slate-900 dark:text-white mt-0.5 block">₦{{ number_format((float)$catRow['total'], 2) }}</span>
+                        <span class="text-[10px] text-slate-500">{{ (int)$catRow['count'] }} item(s)</span>
+                    </div>
+                @endforeach
+            </div>
+        @endif
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+                <thead>
+                    <tr class="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 uppercase text-[10px] font-mono">
+                        <th class="py-2 pr-3">Date</th>
+                        <th class="py-2 pr-3">Category (Manual)</th>
+                        <th class="py-2 pr-3">Description</th>
+                        <th class="py-2 text-right">Amount (₦)</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-200/70 dark:divide-slate-800/70 font-mono">
+                    @forelse (($fin['general_expenses'] ?? []) as $ge)
+                        <tr>
+                            <td class="py-2.5 pr-3 text-slate-600 dark:text-slate-300">{{ $ge['expense_date'] ?? '' }}</td>
+                            <td class="py-2.5 pr-3 font-sans font-semibold text-cyan-700 dark:text-cyan-300">{{ $ge['category'] ?? '' }}</td>
+                            <td class="py-2.5 pr-3 font-sans text-slate-800 dark:text-slate-100">{{ $ge['description'] ?? '' }}</td>
+                            <td class="py-2.5 text-right font-bold text-slate-900 dark:text-white">₦{{ number_format((float)($ge['amount'] ?? 0), 2) }}</td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="4" class="py-4 text-center text-slate-400 font-sans italic">No general farm overhead expenses logged yet.</td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
         </div>
     </div>
 
@@ -155,14 +314,8 @@
             <input type="hidden" name="action" value="add_fixed_asset">
             <input type="text" name="asset_name" required placeholder="Asset Name (e.g. 5kVA Generator)"
                    class="lg:col-span-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white px-3 py-2 text-xs focus:border-emerald-500 focus:outline-none">
-            <select name="category" class="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white px-3 py-2 text-xs focus:border-emerald-500 focus:outline-none">
-                <option value="Poultry House / Pen">Poultry House / Pen</option>
-                <option value="Incubator / Hatchery">Incubator / Hatchery</option>
-                <option value="Generator / Power">Generator / Power</option>
-                <option value="Borehole / Water">Borehole / Water</option>
-                <option value="Cages / Equipment">Cages / Equipment</option>
-                <option value="Land / Lease">Land / Lease</option>
-            </select>
+            <input type="text" name="category" required placeholder="Category (e.g. Generator, Machinery, Pen)"
+                   class="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white px-3 py-2 text-xs focus:border-emerald-500 focus:outline-none">
             <input type="number" step="0.01" min="1" name="purchase_cost" required placeholder="Cost (₦)"
                    class="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-emerald-500 focus:outline-none">
             <input type="number" min="1" name="useful_life_months" value="60" required placeholder="Life (Months)"
@@ -290,8 +443,9 @@ function printWholeFarmStatement() {
                     <p class="text-xs text-slate-500">Whole-Farm General Financial Statement (Generated {{ date('Y-m-d H:i') }})</p>
                 </div>
                 <div class="text-right font-mono text-xs">
-                    <div>Fixed + Rent: <strong>₦{{ number_format($fin['total_fixed_and_rent'], 2) }}</strong></div>
-                    <div>Flow Assets: <strong>₦{{ number_format($fin['total_flow_assets'], 2) }}</strong></div>
+                    <div>Total Net Worth (At Cost): <strong>₦{{ number_format((float)($fin['total_net_worth'] ?? 0), 2) }}</strong></div>
+                    <div>Projected Market Net Worth: <strong>₦{{ number_format((float)($fin['projected_market_net_worth'] ?? 0), 2) }}</strong></div>
+                    <div>Grand Total All-In Costs: <strong>₦{{ number_format((float)($fin['grand_total_all_costs'] ?? 0), 2) }}</strong></div>
                     <div>Net Position: <strong>₦{{ number_format($fin['net_farm_profit'], 2) }}</strong></div>
                 </div>
             </div>
