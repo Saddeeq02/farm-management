@@ -1,4 +1,4 @@
-const CACHE_NAME = 'aurapoultry-static-v3';
+const CACHE_NAME = 'aurapoultry-static-v4';
 const STATIC_ASSETS = [
   '/assets/css/app.css',
   '/assets/js/app.js',
@@ -33,20 +33,15 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // Cache-first for static assets; network-first for dynamic PHP pages
-  if (url.pathname.startsWith('/assets/')) {
-    event.respondWith(
-      caches.match(req).then((cached) => cached || fetch(req).then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
-        return res;
-      }))
-    );
-    return;
-  }
+  // Only intercept static /assets/ files; let HTML & partial navigations go direct without SW overhead
+  if (!url.pathname.startsWith('/assets/')) return;
 
   event.respondWith(
-    fetch(req).catch(() => caches.match(req))
+    caches.match(req).then((cached) => cached || fetch(req).then((res) => {
+      const copy = res.clone();
+      caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+      return res;
+    }))
   );
 });
 

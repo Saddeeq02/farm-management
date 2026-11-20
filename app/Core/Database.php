@@ -21,7 +21,7 @@ class Database
     private int $mutationVersion = 0;
     private mixed $curlHandle = null;
     private string $supabaseCacheFile = '';
-    private int $supabaseCacheTtlSeconds = 15;
+    private int $supabaseCacheTtlSeconds = 600;
 
     public function __construct(string $storageDir, string $schemaFile)
     {

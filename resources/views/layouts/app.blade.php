@@ -338,13 +338,14 @@
           @foreach ($navItems as $item)
             @php $isActive = $activePage === $item['page']; @endphp
             <a href="/?page={{ $item['page'] }}"
+               data-nav-page="{{ $item['page'] }}"
                class="group flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all {{ $isActive ? 'bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/25' : 'text-slate-700 dark:text-slate-300 hover:bg-white/70 dark:hover:bg-slate-800/70 hover:text-emerald-600 dark:hover:text-emerald-400' }}">
-              <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 {{ $isActive ? 'bg-slate-950/15 text-slate-950' : 'bg-slate-200/70 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 group-hover:text-emerald-600 dark:group-hover:text-emerald-400' }}">
+              <div data-nav-icon-box="{{ $item['page'] }}" class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 {{ $isActive ? 'bg-slate-950/15 text-slate-950' : 'bg-slate-200/70 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 group-hover:text-emerald-600 dark:group-hover:text-emerald-400' }}">
                 <i class="fa-solid {{ $item['icon'] }} text-xs"></i>
               </div>
               <div class="min-w-0">
                 <div class="text-xs font-semibold leading-tight truncate">{{ $item['label'] }}</div>
-                <div class="text-[10px] leading-tight truncate {{ $isActive ? 'text-slate-900/75 font-mono' : 'text-slate-500 dark:text-slate-400' }}">{{ $item['sub'] }}</div>
+                <div data-nav-sub="{{ $item['page'] }}" class="text-[10px] leading-tight truncate {{ $isActive ? 'text-slate-900/75 font-mono' : 'text-slate-500 dark:text-slate-400' }}">{{ $item['sub'] }}</div>
               </div>
             </a>
           @endforeach
@@ -382,8 +383,11 @@
       </div>
     @endif
 
+    <!-- Top Instant Navigation Progress Bar -->
+    <div id="topNavProgressBar" class="fixed top-0 left-0 h-0.5 z-[100] bg-gradient-to-r from-emerald-400 via-cyan-400 to-amber-400 transition-all duration-150 opacity-0 pointer-events-none" style="width:0%"></div>
+
     <!-- CONTENT BODY -->
-    <main class="p-4 lg:p-8 pb-24 lg:pb-8 max-w-7xl mx-auto w-full min-w-0 space-y-6">
+    <main id="appMainContent" class="p-4 lg:p-8 pb-24 lg:pb-8 max-w-7xl mx-auto w-full min-w-0 space-y-6">
       @yield('content')
     </main>
 
@@ -1517,7 +1521,7 @@
     // PWA Service Worker & Install Prompt
     let deferredPwaPrompt = null;
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+      window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js?v=4').catch(() => {}));
     }
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
@@ -1533,6 +1537,221 @@
       const btn = document.getElementById('pwaInstallBtn');
       if (btn) btn.classList.add('hidden');
     }
+
+    // Instant All-Page Client Router & Background Prefetch Engine
+    (function() {
+      const VALID_PAGES = ['dashboard', 'incubation', 'production', 'layers', 'eggs', 'inventory', 'sales', 'finance', 'ai'];
+      window._bsPageCache = window._bsPageCache || {};
+      window._bsInFlight = window._bsInFlight || {};
+      let currentActivePage = '{{ $currentPage ?? 'dashboard' }}';
+
+      const mainEl = document.getElementById('appMainContent');
+      const progressBar = document.getElementById('topNavProgressBar');
+
+      if (mainEl) {
+        window._bsPageCache[currentActivePage] = {
+          title: document.title,
+          html: mainEl.innerHTML,
+          ts: Date.now()
+        };
+      }
+
+      function setProgress(pct, visible) {
+        if (!progressBar) return;
+        progressBar.style.width = pct + '%';
+        progressBar.style.opacity = visible ? '1' : '0';
+      }
+
+      function setActiveSidebarPage(page) {
+        currentActivePage = page;
+        document.querySelectorAll('a[data-nav-page]').forEach((a) => {
+          const p = a.getAttribute('data-nav-page');
+          const iconBox = a.querySelector('[data-nav-icon-box]');
+          const subEl = a.querySelector('[data-nav-sub]');
+          if (p === page) {
+            a.className = 'group flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/25';
+            if (iconBox) iconBox.className = 'w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-slate-950/15 text-slate-950';
+            if (subEl) subEl.className = 'text-[10px] leading-tight truncate text-slate-900/75 font-mono';
+          } else {
+            a.className = 'group flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-slate-700 dark:text-slate-300 hover:bg-white/70 dark:hover:bg-slate-800/70 hover:text-emerald-600 dark:hover:text-emerald-400';
+            if (iconBox) iconBox.className = 'w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-slate-200/70 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 group-hover:text-emerald-600 dark:group-hover:text-emerald-400';
+            if (subEl) subEl.className = 'text-[10px] leading-tight truncate text-slate-500 dark:text-slate-400';
+          }
+        });
+        if (typeof toggleSidebar === 'function' && window.innerWidth < 1024) {
+          toggleSidebar(false);
+        }
+      }
+
+      function ensureChartJsLoaded(cb) {
+        if (typeof Chart !== 'undefined') {
+          cb();
+          return;
+        }
+        let s = document.querySelector('script[data-chartjs-dynamic]');
+        if (!s) {
+          s = document.createElement('script');
+          s.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+          s.setAttribute('data-chartjs-dynamic', '1');
+          s.onload = cb;
+          document.head.appendChild(s);
+        } else {
+          s.addEventListener('load', cb, { once: true });
+        }
+      }
+
+      function executeInlineScripts(container) {
+        container.querySelectorAll('script').forEach((oldScript) => {
+          const newScript = document.createElement('script');
+          Array.from(oldScript.attributes).forEach((attr) => newScript.setAttribute(attr.name, attr.value));
+          newScript.textContent = oldScript.textContent;
+          oldScript.parentNode.replaceChild(newScript, oldScript);
+        });
+      }
+
+      function swapMainContent(page, payload, pushHistory = true) {
+        if (!mainEl || !payload) return;
+        setActiveSidebarPage(page);
+        if (payload.title) document.title = payload.title;
+        if (pushHistory) {
+          const targetUrl = '/?page=' + encodeURIComponent(page);
+          if (window.location.search !== '?page=' + page) {
+            history.pushState({ page }, payload.title || '', targetUrl);
+          }
+        }
+        mainEl.innerHTML = payload.html;
+        executeInlineScripts(mainEl);
+        window.scrollTo({ top: 0, behavior: 'instant' });
+
+        if (page === 'dashboard') {
+          ensureChartJsLoaded(() => {
+            if (typeof initCharts === 'function') initCharts();
+            if (typeof updatePricingSimulation === 'function') updatePricingSimulation();
+          });
+        }
+      }
+
+      function fetchPartialPage(page, isPrefetch = false) {
+        if (!VALID_PAGES.includes(page)) return Promise.resolve(null);
+        if (window._bsInFlight[page]) return window._bsInFlight[page];
+
+        const url = '/?page=' + encodeURIComponent(page) + '&_partial=1' + (isPrefetch ? '&_prefetch=1' : '');
+        const p = fetch(url, {
+          method: 'GET',
+          headers: { 'X-Blackswan-Partial': '1', 'Accept': 'application/json' },
+          credentials: 'same-origin'
+        })
+          .then((res) => {
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.json();
+          })
+          .then((data) => {
+            delete window._bsInFlight[page];
+            if (data && data.ok && typeof data.html === 'string') {
+              const entry = { title: data.title || document.title, html: data.html, ts: Date.now() };
+              window._bsPageCache[page] = entry;
+              return entry;
+            }
+            return null;
+          })
+          .catch(() => {
+            delete window._bsInFlight[page];
+            return null;
+          });
+
+        window._bsInFlight[page] = p;
+        return p;
+      }
+
+      async function navigateToPage(page, pushHistory = true) {
+        if (!VALID_PAGES.includes(page)) return;
+        setActiveSidebarPage(page);
+
+        const cached = window._bsPageCache[page];
+        if (cached) {
+          swapMainContent(page, cached, pushHistory);
+          if (Date.now() - cached.ts > 20000) {
+            fetchPartialPage(page, true);
+          }
+          return;
+        }
+
+        setProgress(65, true);
+        const fresh = await fetchPartialPage(page, false);
+        setProgress(100, false);
+
+        if (fresh) {
+          swapMainContent(page, fresh, pushHistory);
+        } else {
+          window.location.href = '/?page=' + encodeURIComponent(page);
+        }
+      }
+
+      function extractInternalPage(anchor) {
+        if (!anchor || anchor.target || anchor.hasAttribute('download')) return null;
+        const href = anchor.getAttribute('href') || '';
+        if (!href.startsWith('/?page=') && !href.startsWith('?page=')) return null;
+        try {
+          const u = new URL(href, window.location.origin);
+          if (u.origin !== window.location.origin || u.pathname !== '/') return null;
+          if (u.searchParams.get('action')) return null;
+          const p = u.searchParams.get('page');
+          return VALID_PAGES.includes(p) ? p : null;
+        } catch (_) {
+          return null;
+        }
+      }
+
+      document.addEventListener('click', (e) => {
+        if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        const anchor = e.target.closest('a');
+        const page = extractInternalPage(anchor);
+        if (!page) return;
+        e.preventDefault();
+        navigateToPage(page, true);
+      });
+
+      const triggerHoverPrefetch = (e) => {
+        const anchor = e.target.closest('a');
+        const page = extractInternalPage(anchor);
+        if (page && !window._bsPageCache[page]) {
+          fetchPartialPage(page, true);
+        }
+      };
+      document.addEventListener('mouseover', triggerHoverPrefetch, { passive: true });
+      document.addEventListener('touchstart', triggerHoverPrefetch, { passive: true });
+
+      window.addEventListener('popstate', () => {
+        const u = new URL(window.location.href);
+        const page = u.searchParams.get('page') || 'dashboard';
+        if (VALID_PAGES.includes(page)) {
+          navigateToPage(page, false);
+        }
+      });
+
+      // Clear page cache whenever a form is submitted so post-redirect data is always fresh
+      document.addEventListener('submit', () => {
+        window._bsPageCache = {};
+      });
+
+      // Background prefetch all remaining pages after initial render
+      window.addEventListener('load', () => {
+        const priorityOrder = ['production', 'dashboard', 'incubation', 'inventory', 'layers', 'eggs', 'sales', 'finance', 'ai']
+          .filter((p) => p !== currentActivePage);
+
+        let idx = 0;
+        function prefetchNextBatch() {
+          if (idx >= priorityOrder.length) return;
+          const batch = priorityOrder.slice(idx, idx + 2);
+          idx += 2;
+          Promise.all(batch.map((p) => window._bsPageCache[p] ? Promise.resolve() : fetchPartialPage(p, true)))
+            .then(() => {
+              setTimeout(prefetchNextBatch, 120);
+            });
+        }
+        setTimeout(prefetchNextBatch, 200);
+      });
+    })();
   </script>
 
   <!-- Change Farm Manager Password Modal -->

@@ -329,7 +329,7 @@
                             class="px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[11px] font-sans font-semibold flex items-center gap-1.5 shadow-sm transition cursor-pointer">
                         <i class="fa-solid fa-pen-to-square"></i> Edit Batch
                     </button>
-                    <button type="button" onclick='openBatchPnLModal(@json($pb))'
+                    <button type="button" onclick="openBatchPnLModal({{ (int)$pb['id'] }})"
                             class="px-3.5 py-2 rounded-xl bg-slate-800 dark:bg-slate-700 hover:bg-slate-700 dark:hover:bg-slate-600 text-white text-[11px] font-sans font-semibold flex items-center gap-1.5 shadow-sm transition cursor-pointer">
                         <i class="fa-solid fa-file-invoice-dollar text-emerald-400"></i> Batch P&amp;L Report
                     </button>
@@ -621,13 +621,19 @@ function fmtCurrency(n) {
     return '₦' + Number(n || 0).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function openBatchPnLModal(pb) {
+function openBatchPnLModal(batchOrId) {
+    const pb = (typeof batchOrId === 'object' && batchOrId !== null)
+        ? batchOrId
+        : (window.prodBatchesEditMap?.[String(batchOrId)] || window.prodBatchesEditMap?.[batchOrId]);
+    if (!pb) return;
     const m = pb.metrics || {};
     document.getElementById('printReportTitle').textContent = 'Batch Profit & Loss Close-Out Report';
     const otherCost = Number(m.total_labor_cost || 0) + Number(m.total_sanitation_cost || 0) + Number(m.total_water_other_cost || 0);
-    const totalRev = Number(m.total_revenue || 0);
+    const totalRev = Number(m.realized_revenue ?? m.total_revenue ?? 0);
     const totalCost = Number(m.total_accumulated_cost || 0);
     const netProfit = totalRev - totalCost;
+    const soldBirds = Number(m.total_birds_sold ?? m.birds_sold ?? 0);
+    const remBirds = Number(m.current_in_house_birds ?? m.remaining_live_birds ?? 0);
 
     document.getElementById('printReportBody').innerHTML = `
         <div class="space-y-4 text-slate-800 font-sans text-xs">
@@ -644,7 +650,7 @@ function openBatchPnLModal(pb) {
             <div class="grid grid-cols-3 gap-2 text-center bg-slate-100 rounded-lg p-2.5 font-mono">
                 <div><span class="block text-[10px] text-slate-500">Initial Birds</span><strong class="text-slate-900">${m.initial_birds || 0}</strong></div>
                 <div><span class="block text-[10px] text-slate-500">Mortality</span><strong class="text-rose-600">-${m.total_mortality || 0}</strong></div>
-                <div><span class="block text-[10px] text-slate-500">Sold / Remaining</span><strong class="text-emerald-700">${m.birds_sold || 0} / ${m.remaining_live_birds || 0}</strong></div>
+                <div><span class="block text-[10px] text-slate-500">Sold / Remaining</span><strong class="text-emerald-700">${soldBirds} / ${remBirds}</strong></div>
             </div>
             <table class="w-full text-xs border-collapse">
                 <thead>
@@ -714,6 +720,7 @@ foreach ($productionBatches ?? [] as $_pb) {
         'transferred_incubation_cost' => (float) ($_pb['transferred_incubation_cost'] ?? ($_pb['metrics']['incubation_cost'] ?? 0)),
         'selling_price_per_bird' => (float) ($_pb['target_selling_price'] ?? ($_pb['metrics']['recommended_selling_price'] ?? 0)),
         'status' => $_pb['status'] ?? 'Active',
+        'metrics' => $_pb['metrics'] ?? [],
     ];
     foreach ($_pb['logs'] ?? [] as $_lg) {
         $lgId = (int) ($_lg['id'] ?? 0);

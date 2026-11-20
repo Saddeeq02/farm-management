@@ -38,6 +38,20 @@ class BladeEngine
         return $content;
     }
 
+    public function renderPartial(string $view, array $data = []): array
+    {
+        $this->sections = [];
+        $this->sectionStack = [];
+        $this->parentLayout = null;
+
+        $content = $this->evaluateView($view, $data);
+
+        return [
+            'title' => $this->yieldContent('title', 'Blackswan Farms and General Enterprises — Farm Management'),
+            'content' => $this->sections['content'] ?? $content,
+        ];
+    }
+
     public function includeView(string $view, array $data = []): string
     {
         $savedLayout = $this->parentLayout;
@@ -54,7 +68,7 @@ class BladeEngine
             throw new \RuntimeException("Blade view not found: {$view} ({$viewFile})");
         }
 
-        $compiledFile = $this->cachePath . '/' . md5($view) . '.php';
+        $compiledFile = $this->cachePath . '/' . md5('v3.6:' . $view) . '.php';
         if (!file_exists($compiledFile) || filemtime($viewFile) > filemtime($compiledFile)) {
             $raw = file_get_contents($viewFile);
             $compiled = $this->compile($raw);
@@ -143,11 +157,12 @@ class BladeEngine
         $content = str_replace('@empty', '<?php endforeach; else: ?>', $content);
         $content = str_replace('@endforelse', '<?php endif; ?>', $content);
 
-        // Balanced-parentheses directive compiler for @if, @elseif, @foreach, @for
+        // Balanced-parentheses directive compiler for @if, @elseif, @foreach, @for, @json
         $content = $this->compileBalancedDirective($content, 'if', '<?php if (%s): ?>');
         $content = $this->compileBalancedDirective($content, 'elseif', '<?php elseif (%s): ?>');
         $content = $this->compileBalancedDirective($content, 'foreach', '<?php foreach (%s): ?>');
         $content = $this->compileBalancedDirective($content, 'for', '<?php for (%s): ?>');
+        $content = $this->compileBalancedDirective($content, 'json', '<?= json_encode(%s, JSON_UNESCAPED_UNICODE) ?>');
 
         $content = preg_replace('/@else\b/', '<?php else: ?>', $content);
         $content = preg_replace('/@endif\b/', '<?php endif; ?>', $content);

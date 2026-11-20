@@ -445,8 +445,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$flashSuccess = $consumeFlash('flash_success');
-$flashError = $consumeFlash('flash_error');
+$isPartialRequest = (($_GET['_partial'] ?? '') === '1') || (($_SERVER['HTTP_X_BLACKSWAN_PARTIAL'] ?? '') === '1');
+$isPrefetchRequest = $isPartialRequest && (($_GET['_prefetch'] ?? '') === '1');
+
+$flashSuccess = $isPrefetchRequest ? null : $consumeFlash('flash_success');
+$flashError = $isPrefetchRequest ? null : $consumeFlash('flash_error');
 
 $viewMap = [
     'dashboard' => 'dashboard.index',
@@ -459,6 +462,37 @@ $viewMap = [
     'finance' => 'finance.index',
     'ai' => 'ai.index',
 ];
+
+if ($isPartialRequest) {
+    $partialData = [
+        'currentPage' => $currentPage,
+        'summary' => in_array($currentPage, ['dashboard', 'sales'], true) ? $farm->getExecutiveSummary() : [],
+        'incubationBatches' => in_array($currentPage, ['dashboard', 'incubation'], true) ? $farm->getIncubationBatchesEnriched() : [],
+        'inventoryItems' => in_array($currentPage, ['dashboard', 'inventory', 'layers', 'production', 'ai'], true) ? $farm->getInventoryItemsEnriched() : [],
+        'productionBatches' => in_array($currentPage, ['dashboard', 'production', 'sales'], true) ? $farm->getProductionBatchesEnriched() : [],
+        'layersOverview' => in_array($currentPage, ['layers', 'eggs'], true) ? $farm->getLayersOverview() : [],
+        'generalRent' => in_array($currentPage, ['inventory', 'production'], true) ? $farm->getGeneralRentMetrics() : [],
+        'generalExpenses' => $currentPage === 'inventory' ? $farm->getGeneralFarmExpenses() : [],
+        'wholeFarmFinancials' => $currentPage === 'finance' ? $farm->getWholeFarmFinancials() : [],
+        'reminders' => [],
+        'aiChatHistory' => $currentPage === 'ai' ? $ai->getChatHistory() : [],
+        'aiMemories' => $currentPage === 'ai' ? $farm->getAiMemories() : [],
+        'geminiApiKey' => (string) $db->getSetting('gemini_api_key', ''),
+        'geminiModel' => (string) $db->getSetting('gemini_model', 'gemini-3.8-flash'),
+        'flashSuccess' => $flashSuccess,
+        'flashError' => $flashError,
+    ];
+    $partial = $blade->renderPartial($viewMap[$currentPage], $partialData);
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: private, max-age=0, must-revalidate');
+    echo json_encode([
+        'ok' => true,
+        'page' => $currentPage,
+        'title' => $partial['title'],
+        'html' => $partial['content'],
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 $viewData = [
     'currentPage' => $currentPage,
