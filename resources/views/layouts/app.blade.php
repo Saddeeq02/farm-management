@@ -7,8 +7,10 @@
   <meta name="theme-color" content="#10b981">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
+  <link rel="manifest" href="/manifest.webmanifest?v=3.6">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/favicon-32.png?v=3.6">
+  <link rel="shortcut icon" href="/favicon.ico?v=3.6">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/apple-touch-icon.png?v=3.6">
   
   <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -75,9 +77,8 @@
           <i class="fa-solid fa-bars text-sm"></i>
         </button>
         <a href="/?page=dashboard" class="flex items-center space-x-2.5 sm:space-x-3 group min-w-0">
-          <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-emerald-500 via-teal-400 to-cyan-400 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-emerald-500/30 group-hover:scale-105 transition-transform shrink-0">
-            <i class="fa-solid fa-feather-pointed text-sm sm:text-base"></i>
-          </div>
+          <img src="/assets/icons/logo-transparent.png?v=3.6" alt="Sono Blackswan Farms Logo"
+               class="h-10 sm:h-11 w-auto object-contain drop-shadow-[0_2px_6px_rgba(6,182,212,0.35)] group-hover:scale-105 transition-transform shrink-0">
           <div class="min-w-0">
             <div class="flex items-center space-x-2">
               <h1 class="text-base sm:text-xl font-extrabold tracking-tight truncate bg-clip-text text-transparent bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-500 dark:from-emerald-300 dark:via-teal-200 dark:to-cyan-200">

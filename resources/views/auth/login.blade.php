@@ -7,8 +7,10 @@
   <meta name="theme-color" content="#10b981">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
+  <link rel="manifest" href="/manifest.webmanifest?v=3.6">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/favicon-32.png?v=3.6">
+  <link rel="shortcut icon" href="/favicon.ico?v=3.6">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/apple-touch-icon.png?v=3.6">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -59,9 +61,8 @@
     <div class="glass-card rounded-3xl p-7 sm:p-8 shadow-2xl border border-white/50 dark:border-slate-700/70 bg-white/80 dark:bg-slate-900/75 backdrop-blur-xl">
       <!-- Brand Header -->
       <div class="flex flex-col items-center text-center mb-7">
-        <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/25 mb-3.5">
-          <i class="fa-solid fa-feather-pointed text-slate-950 text-2xl"></i>
-        </div>
+        <img src="/assets/icons/logo-transparent.png?v=3.6" alt="Sono Blackswan Farms Logo"
+             class="h-20 w-auto object-contain drop-shadow-[0_4px_10px_rgba(6,182,212,0.3)] mb-3">
         <h1 class="text-lg sm:text-xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-snug">Blackswan Farms and General Enterprises</h1>
         <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Farm Manager Sign In</p>
       </div>

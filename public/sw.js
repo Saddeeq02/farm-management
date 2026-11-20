@@ -1,8 +1,11 @@
-const CACHE_NAME = 'aurapoultry-static-v2';
+const CACHE_NAME = 'aurapoultry-static-v3';
 const STATIC_ASSETS = [
   '/assets/css/app.css',
   '/assets/js/app.js',
   '/assets/images/poultry-house.jpg',
+  '/assets/icons/logo-transparent.png',
+  '/assets/icons/favicon-32.png',
+  '/assets/icons/apple-touch-icon.png',
   '/assets/icons/icon-192.png',
   '/assets/icons/icon-512.png'
 ];
