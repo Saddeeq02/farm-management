@@ -23,8 +23,10 @@
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   
-  <!-- Chart.js CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  @if (($currentPage ?? 'dashboard') === 'dashboard')
+  <!-- Chart.js CDN (loaded only on Dashboard) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+  @endif
 
   <script>
     tailwind.config = {
@@ -51,7 +53,7 @@
     }
   </script>
 
-  <link rel="stylesheet" href="/assets/css/app.css?v=3.5.4">
+  <link rel="stylesheet" href="/assets/css/app.css?v=3.6">
 </head>
 <body class="min-h-screen flex flex-col justify-between antialiased font-sans transition-colors duration-300 overflow-x-clip">
 
@@ -1146,6 +1148,7 @@
 
     // Chart.js Visualizations
     function initCharts() {
+      if (typeof Chart === 'undefined') return;
       const isDark = state.isDark;
       const textColor = isDark ? '#cbd5e1' : '#334155';
       const borderColor = isDark ? '#08101c' : '#ffffff';

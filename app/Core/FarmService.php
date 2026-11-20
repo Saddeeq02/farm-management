@@ -9,10 +9,29 @@ use RuntimeException;
 class FarmService
 {
     private Database $db;
+    private array $memo = [];
+    private int $memoVer = -1;
 
     public function __construct(Database $db)
     {
         $this->db = $db;
+    }
+
+    private function getMemo(string $key): ?array
+    {
+        $v = $this->db->getMutationVersion();
+        if ($this->memoVer !== $v) {
+            $this->memo = [];
+            $this->memoVer = $v;
+        }
+        return $this->memo[$key] ?? null;
+    }
+
+    private function setMemo(string $key, array $value): array
+    {
+        $this->memoVer = $this->db->getMutationVersion();
+        $this->memo[$key] = $value;
+        return $value;
     }
 
     public function getDatabase(): Database
@@ -25,6 +44,9 @@ class FarmService
      */
     public function getIncubationBatchesEnriched(): array
     {
+        if (($cached = $this->getMemo('inc')) !== null) {
+            return $cached;
+        }
         $batches = $this->db->getTable('incubation_batches');
         $logs = $this->db->getTable('incubation_daily_logs');
         $expenses = $this->db->getTable('incubation_expenses');
@@ -187,7 +209,7 @@ class FarmService
 
         // Newest first
         usort($enriched, fn($a, $b) => (int) $b['id'] <=> (int) $a['id']);
-        return $enriched;
+        return $this->setMemo('inc', $enriched);
     }
 
     /**
@@ -195,6 +217,9 @@ class FarmService
      */
     public function getInventoryItemsEnriched(): array
     {
+        if (($cached = $this->getMemo('inv')) !== null) {
+            return $cached;
+        }
         $items = $this->db->getTable('inventory_items');
         $prodLogs = $this->db->getTable('production_daily_logs');
 
@@ -247,7 +272,7 @@ class FarmService
             $enriched[] = $item;
         }
 
-        return $enriched;
+        return $this->setMemo('inv', $enriched);
     }
 
     /**
@@ -256,6 +281,9 @@ class FarmService
      */
     public function getProductionBatchesEnriched(): array
     {
+        if (($cached = $this->getMemo('prod')) !== null) {
+            return $cached;
+        }
         $batches = $this->db->getTable('production_batches');
         $logs = $this->db->getTable('production_daily_logs');
         $sales = $this->db->getTable('batch_sales');
@@ -499,7 +527,7 @@ class FarmService
         }
 
         usort($enriched, fn($a, $b) => (int) $b['id'] <=> (int) $a['id']);
-        return $enriched;
+        return $this->setMemo('prod', $enriched);
     }
 
     private function computeFeedTransitionAlert(int $ageDays, int $ageWeeks, ?string $lastFeedCategory): array
@@ -551,6 +579,9 @@ class FarmService
      */
     public function getExecutiveSummary(): array
     {
+        if (($cached = $this->getMemo('sum')) !== null) {
+            return $cached;
+        }
         $incBatches = $this->getIncubationBatchesEnriched();
         $prodBatches = $this->getProductionBatchesEnriched();
         $inventory = $this->getInventoryItemsEnriched();
@@ -603,7 +634,7 @@ class FarmService
             }
         }
 
-        return [
+        return $this->setMemo('sum', [
             'active_eggs_in_incubator' => $activeEggsInIncubator,
             'total_chicks_hatched' => $totalChicksHatched,
             'avg_hatchability_pct' => $avgHatchability,
@@ -619,7 +650,7 @@ class FarmService
             'active_incubation_count' => count(array_filter($incBatches, fn($b) => $b['status'] === 'Active')),
             'ready_to_move_count' => count(array_filter($incBatches, fn($b) => $b['status'] === 'Completed')),
             'active_production_count' => count(array_filter($prodBatches, fn($b) => $b['status'] === 'Active')),
-        ];
+        ]);
     }
 
     // =========================================================================
@@ -990,6 +1021,9 @@ class FarmService
 
     public function getGeneralRentMetrics(): array
     {
+        if (($cached = $this->getMemo('rent')) !== null) {
+            return $cached;
+        }
         $annualRent = max(0.0, (float) $this->db->getSetting('annual_farm_rent', 0));
         $dailyRent = $annualRent > 0 ? round($annualRent / 365.0, 2) : 0.0;
 
@@ -1029,7 +1063,7 @@ class FarmService
             ? round($combinedDaily / $totalLiveBirds, 4)
             : 0.0;
 
-        return [
+        return $this->setMemo('rent', [
             'annual_rent' => $annualRent,
             'daily_rent' => $dailyRent,
             'total_general_expenses' => round($totalGeneralExpenses, 2),
@@ -1037,7 +1071,7 @@ class FarmService
             'combined_daily_overhead' => round($combinedDaily, 2),
             'total_live_birds' => $totalLiveBirds,
             'rent_per_bird_per_day' => $rentPerBirdPerDay,
-        ];
+        ]);
     }
 
     public function updateProductionBatchConfig(int $batchId, array $input): bool
@@ -1288,6 +1322,9 @@ class FarmService
      */
     public function getActiveReminders(): array
     {
+        if (($cached = $this->getMemo('rem')) !== null) {
+            return $cached;
+        }
         $reminders = [];
         $prodBatches = $this->getProductionBatchesEnriched();
         $today = date('Y-m-d');
@@ -1570,7 +1607,7 @@ class FarmService
             $reminders[$idx]['is_read'] = (($readMap[$rem['id']] ?? '') === $today);
         }
 
-        return $reminders;
+        return $this->setMemo('rem', $reminders);
     }
 
     private function getReadRemindersMap(): array
@@ -1733,6 +1770,9 @@ class FarmService
 
     public function getWholeFarmFinancials(): array
     {
+        if (($cached = $this->getMemo('fin')) !== null) {
+            return $cached;
+        }
         $fixedAssets = $this->getFixedAssets();
         $rent = $this->getGeneralRentMetrics();
         $generalExpenses = $this->getGeneralFarmExpenses();
@@ -2036,7 +2076,7 @@ class FarmService
             2
         );
 
-        return [
+        return $this->setMemo('fin', [
             'fixed_assets' => $fixedAssets,
             'fixed_capital_total' => round($fixedCapitalTotal, 2),
             'annual_farm_rent' => round($annualRent, 2),
@@ -2086,7 +2126,7 @@ class FarmService
             'general_expenses' => $generalExpenses,
             'general_expenses_by_category' => $generalExpensesByCategory,
             'batches' => $batchRows,
-        ];
+        ]);
     }
 
     public function createLayerFlock(array $input): int
@@ -2240,6 +2280,9 @@ class FarmService
 
     public function getLayersOverview(): array
     {
+        if (($cached = $this->getMemo('layers')) !== null) {
+            return $cached;
+        }
         $flocks = $this->db->getTable('layer_flocks');
         $logs = $this->db->getTable('egg_collection_logs');
         $prodBatches = $this->db->getTable('production_batches');
@@ -2561,7 +2604,7 @@ class FarmService
 
         $avgLayRate = $liveLayers > 0 ? round($weightedLayRateSum / $liveLayers, 1) : 0.0;
 
-        return [
+        return $this->setMemo('layers', [
             'flocks' => $enrichedFlocks,
             'egg_sources' => $eggSources,
             'collection_logs' => $enrichedLogs,
@@ -2591,7 +2634,7 @@ class FarmService
                 'egg_sales_collected' => round($eggSalesCollected, 2),
                 'egg_sales_receivables' => round($eggSalesReceivables, 2),
             ],
-        ];
+        ]);
     }
 
     public function transferEggsToIncubator(array $input): int

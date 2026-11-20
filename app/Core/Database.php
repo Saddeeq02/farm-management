@@ -17,6 +17,11 @@ class Database
     private string $supabaseUrl = '';
     private string $supabaseKey = '';
     private string $supabaseRowId = 'blackswan_main';
+    private bool $dirty = false;
+    private int $mutationVersion = 0;
+    private mixed $curlHandle = null;
+    private string $supabaseCacheFile = '';
+    private int $supabaseCacheTtlSeconds = 15;
 
     public function __construct(string $storageDir, string $schemaFile)
     {
@@ -24,6 +29,8 @@ class Database
         $this->supabaseKey = (string) (getenv('SUPABASE_SERVICE_ROLE_KEY') ?: ($_ENV['SUPABASE_SERVICE_ROLE_KEY'] ?? ''));
         if ($this->supabaseUrl !== '' && $this->supabaseKey !== '') {
             $this->usingSupabase = true;
+            $cacheHash = substr(md5($this->supabaseUrl . '|' . $this->supabaseRowId), 0, 12);
+            $this->supabaseCacheFile = rtrim(sys_get_temp_dir(), '/') . '/blackswan_sb_cache_' . $cacheHash . '.json';
         }
 
         if (!$this->usingSupabase) {
@@ -67,6 +74,19 @@ class Database
         }
 
         $this->loadStore();
+        register_shutdown_function(function (): void {
+            $this->flush();
+        });
+    }
+
+    public function __destruct()
+    {
+        $this->flush();
+    }
+
+    public function getMutationVersion(): int
+    {
+        return $this->mutationVersion;
     }
 
     public function isMysqlActive(): bool
@@ -74,43 +94,110 @@ class Database
         return $this->usingMysql;
     }
 
-    private function buildSupabaseHeaders(bool $isWrite = false): string
+    private function buildSupabaseHeadersArray(bool $isWrite = false): array
     {
-        $headers = "apikey: {$this->supabaseKey}\r\n";
-        // Legacy JWT service_role keys require Authorization: Bearer; new sb_secret_ keys use apikey only
+        $headers = [
+            "apikey: {$this->supabaseKey}",
+            'Connection: keep-alive',
+        ];
         if (!str_starts_with($this->supabaseKey, 'sb_secret_')) {
-            $headers .= "Authorization: Bearer {$this->supabaseKey}\r\n";
+            $headers[] = "Authorization: Bearer {$this->supabaseKey}";
         }
         if ($isWrite) {
-            $headers .= "Content-Type: application/json\r\nPrefer: resolution=merge-duplicates,return=minimal\r\n";
+            $headers[] = 'Content-Type: application/json';
+            $headers[] = 'Prefer: resolution=merge-duplicates,return=minimal';
         } else {
-            $headers .= "Accept: application/json\r\n";
+            $headers[] = 'Accept: application/json';
         }
         return $headers;
+    }
+
+    private function supabaseRequest(string $method, string $url, ?string $body = null): ?string
+    {
+        $isWrite = ($method !== 'GET');
+        $headers = $this->buildSupabaseHeadersArray($isWrite);
+
+        if (function_exists('curl_init')) {
+            if ($this->curlHandle === null) {
+                $this->curlHandle = curl_init();
+            }
+            $ch = $this->curlHandle;
+            curl_reset($ch);
+            $opts = [
+                CURLOPT_URL => $url,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_CUSTOMREQUEST => $method,
+                CURLOPT_HTTPHEADER => $headers,
+                CURLOPT_CONNECTTIMEOUT => 4,
+                CURLOPT_TIMEOUT => 7,
+                CURLOPT_ENCODING => '',
+                CURLOPT_TCP_KEEPALIVE => 1,
+            ];
+            if ($body !== null) {
+                $opts[CURLOPT_POSTFIELDS] = $body;
+            }
+            curl_setopt_array($ch, $opts);
+            $res = curl_exec($ch);
+            return is_string($res) ? $res : null;
+        }
+
+        $ctxOpts = [
+            'http' => [
+                'method' => $method,
+                'header' => implode("\r\n", $headers) . "\r\n",
+                'timeout' => 7,
+                'ignore_errors' => true,
+            ],
+        ];
+        if ($body !== null) {
+            $ctxOpts['http']['content'] = $body;
+        }
+        $raw = @file_get_contents($url, false, stream_context_create($ctxOpts));
+        return is_string($raw) ? $raw : null;
     }
 
     private function loadStore(): void
     {
         if ($this->usingSupabase) {
+            if ($this->supabaseCacheFile !== '' && file_exists($this->supabaseCacheFile)) {
+                $age = time() - (int) @filemtime($this->supabaseCacheFile);
+                if ($age >= 0 && $age <= $this->supabaseCacheTtlSeconds) {
+                    $cached = json_decode((string) @file_get_contents($this->supabaseCacheFile), true);
+                    if (is_array($cached) && isset($cached['incubation_batches'])) {
+                        $this->store = $cached;
+                        return;
+                    }
+                }
+            }
+
             $url = $this->supabaseUrl . '/rest/v1/app_store?id=eq.' . rawurlencode($this->supabaseRowId) . '&select=data&limit=1';
-            $ctx = stream_context_create([
-                'http' => [
-                    'method' => 'GET',
-                    'header' => $this->buildSupabaseHeaders(false),
-                    'timeout' => 8,
-                    'ignore_errors' => true,
-                ],
-            ]);
-            $raw = @file_get_contents($url, false, $ctx);
+            $raw = $this->supabaseRequest('GET', $url);
             if (is_string($raw) && $raw !== '') {
                 $rows = json_decode($raw, true);
                 if (is_array($rows) && isset($rows[0]['data']) && is_array($rows[0]['data']) && isset($rows[0]['data']['incubation_batches'])) {
                     $this->store = $rows[0]['data'];
+                    if ($this->supabaseCacheFile !== '') {
+                        @file_put_contents($this->supabaseCacheFile, json_encode($this->store, JSON_UNESCAPED_UNICODE));
+                    }
+                    return;
+                }
+                if (is_array($rows) && count($rows) === 0) {
+                    $this->store = $this->getInitialSeedData();
+                    $this->saveStore();
+                    $this->flush();
                     return;
                 }
             }
+
+            if ($this->supabaseCacheFile !== '' && file_exists($this->supabaseCacheFile)) {
+                $cached = json_decode((string) @file_get_contents($this->supabaseCacheFile), true);
+                if (is_array($cached) && isset($cached['incubation_batches'])) {
+                    $this->store = $cached;
+                    return;
+                }
+            }
+
             $this->store = $this->getInitialSeedData();
-            $this->saveStore();
             return;
         }
 
@@ -124,31 +211,37 @@ class Database
 
         $this->store = $this->getInitialSeedData();
         $this->saveStore();
+        $this->flush();
     }
 
     private function saveStore(): void
     {
+        $this->mutationVersion++;
+        $this->dirty = true;
+    }
+
+    public function flush(): void
+    {
+        if (!$this->dirty) {
+            return;
+        }
+        $this->dirty = false;
+
         if ($this->usingSupabase) {
+            if ($this->supabaseCacheFile !== '') {
+                @file_put_contents($this->supabaseCacheFile, json_encode($this->store, JSON_UNESCAPED_UNICODE));
+            }
             $url = $this->supabaseUrl . '/rest/v1/app_store?on_conflict=id';
             $body = json_encode([
                 'id' => $this->supabaseRowId,
                 'data' => $this->store,
                 'updated_at' => gmdate('c'),
             ], JSON_UNESCAPED_UNICODE);
-            $ctx = stream_context_create([
-                'http' => [
-                    'method' => 'POST',
-                    'header' => $this->buildSupabaseHeaders(true),
-                    'content' => $body,
-                    'timeout' => 8,
-                    'ignore_errors' => true,
-                ],
-            ]);
-            @file_get_contents($url, false, $ctx);
+            $this->supabaseRequest('POST', $url, (string) $body);
             return;
         }
 
-        @file_put_contents($this->jsonFile, json_encode($this->store, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        @file_put_contents($this->jsonFile, json_encode($this->store, JSON_UNESCAPED_UNICODE));
     }
 
     public function resetDemoData(): void

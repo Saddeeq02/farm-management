@@ -1,6 +1,4 @@
-/* AuraPoultry OS v3.5 PURE-VIEW Design Engine */
-
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+/* AuraPoultry OS v3.6 PURE-VIEW Design Engine (GPU Accelerated) */
 
 :root {
   --glass-opacity: 0.55;
@@ -33,7 +31,7 @@ html:not(.dark), html:not(.dark) body {
   height: 100vh;
   pointer-events: none;
   z-index: 0;
-  transition: background-image 0.6s ease, filter 0.6s ease;
+  transform: translateZ(0);
 }
 
 /* Dark Mode Backdrop: Minimal overlay so the hen is brightly and prominently visible */
@@ -46,7 +44,6 @@ html.dark .bg-canvas-layer {
   background-position: center 28%;
   background-size: cover;
   background-repeat: no-repeat;
-  background-attachment: fixed;
 }
 
 /* Light Mode Backdrop: Ultra sheer bright sunlight glaze */
@@ -59,7 +56,6 @@ html:not(.dark) .bg-canvas-layer {
   background-position: center 28%;
   background-size: cover;
   background-repeat: no-repeat;
-  background-attachment: fixed;
 }
 
 /* Subtle grid overlay */
@@ -120,20 +116,15 @@ html:not(.dark) .glass-header {
   border-bottom: 1px solid rgba(15, 23, 42, 0.12);
 }
 
-/* Subdued ambient glowing orbs */
+/* Subdued ambient glowing orbs (static GPU layer, zero 60fps re-blur cost) */
 .ambient-orb {
   position: absolute;
   border-radius: 9999px;
-  filter: blur(80px);
+  filter: blur(64px);
   pointer-events: none;
   z-index: 1;
-  opacity: 0.35;
-  animation: floatOrb 16s infinite alternate ease-in-out;
-}
-@keyframes floatOrb {
-  0% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(35px, -25px) scale(1.08); }
-  100% { transform: translate(-25px, 30px) scale(0.95); }
+  opacity: 0.28;
+  transform: translateZ(0);
 }
 
 /* Slider styling */
@@ -230,11 +221,20 @@ input[type=range]::-webkit-slider-thumb:hover {
 }
 
 .farm-ai-btn {
-  animation: farmHaloPulse 3s infinite ease-in-out;
+  box-shadow: 0 0 22px rgba(16, 185, 129, 0.45), 0 0 42px rgba(6, 182, 212, 0.22);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.farm-ai-btn:hover {
+  box-shadow: 0 0 28px rgba(16, 185, 129, 0.7), 0 0 54px rgba(6, 182, 212, 0.4);
 }
 
 .farm-ai-mascot {
-  animation: farmMascotBob 3.5s infinite ease-in-out;
+  transition: transform 0.25s ease;
+}
+
+.farm-ai-btn:hover .farm-ai-mascot {
+  transform: translateY(-3px) rotate(2deg);
 }
 
 /* Crystal-Clear AI Notes & Response Prose */
