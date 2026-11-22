@@ -44,7 +44,7 @@
                                 <span class="text-[11px] text-slate-500 dark:text-slate-400 block">Recommended Selling Price</span>
                                 <span class="text-xl font-black text-emerald-600 dark:text-emerald-400">₦{{ number_format($m['recommended_selling_price'], 2) }} <span class="text-xs font-normal text-slate-500 dark:text-slate-400">/ bird</span></span>
                             </div>
-                            <button type="button" onclick='openBatchPnLModal(@json($pb))' class="text-[10px] px-2.5 py-1 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 font-bold transition cursor-pointer">
+                            <button type="button" onclick="openBatchPnLModal({{ (int)$pb['id'] }})" class="text-[10px] px-2.5 py-1 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 font-bold transition cursor-pointer">
                                 <i class="fa-solid fa-file-invoice-dollar mr-1"></i> Batch P&amp;L Report
                             </button>
                         </div>
@@ -140,13 +140,34 @@
                 @csrf
                 <input type="hidden" name="action" value="record_batch_sale">
 
+                @php
+                    $defaultSaleBatch = null;
+                    foreach ($productionBatches as $_spb) {
+                        if ((int)($_spb['metrics']['current_in_house_birds'] ?? 0) > 0) {
+                            $defaultSaleBatch = $_spb;
+                            break;
+                        }
+                    }
+                    if ($defaultSaleBatch === null && !empty($productionBatches)) {
+                        $defaultSaleBatch = $productionBatches[0];
+                    }
+                    $defaultSaleBatchId = (int)($defaultSaleBatch['id'] ?? 0);
+                    $defaultAvailBirds = (int)($defaultSaleBatch['metrics']['current_in_house_birds'] ?? 0);
+                    $defaultRecPrice = (float)($defaultSaleBatch['metrics']['recommended_selling_price'] ?? 1700);
+                @endphp
+
                 <div>
                     <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Production Batch</label>
-                    <select name="production_batch_id" id="saleBatchSelect" onchange="syncRecommendedPriceToSale()"
+                    <select name="production_batch_id" id="saleBatchSelect" onchange="syncRecommendedPriceToSale()" required
                             class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs sm:text-sm focus:border-emerald-500 focus:outline-none">
                         @foreach ($productionBatches as $pb)
-                            <option value="{{ $pb['id'] }}" data-rec-price="{{ $pb['metrics']['recommended_selling_price'] }}">
-                                {{ $pb['batch_code'] }} ({{ number_format($pb['metrics']['current_in_house_birds']) }} available • Rec: ₦{{ number_format($pb['metrics']['recommended_selling_price'], 2) }})
+                            @php $avail = (int)($pb['metrics']['current_in_house_birds'] ?? 0); @endphp
+                            <option value="{{ $pb['id'] }}"
+                                    data-rec-price="{{ $pb['metrics']['recommended_selling_price'] }}"
+                                    data-available="{{ $avail }}"
+                                    {{ (int)$pb['id'] === $defaultSaleBatchId ? 'selected' : '' }}
+                                    {{ $avail <= 0 ? 'disabled' : '' }}>
+                                {{ $pb['batch_code'] }} ({{ number_format($avail) }} available{{ $avail <= 0 ? ' — Sold Out' : '' }} • Rec: ₦{{ number_format($pb['metrics']['recommended_selling_price'], 2) }})
                             </option>
                         @endforeach
                     </select>
@@ -155,14 +176,14 @@
                 <div class="grid grid-cols-2 gap-3">
                     <div>
                         <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Birds Sold (Qty)</label>
-                        <input type="number" name="birds_sold" id="saleBirdsQty" value="50" min="1" required
+                        <input type="number" name="birds_sold" id="saleBirdsQty" value="1" min="1" max="{{ max(1, $defaultAvailBirds) }}" required
                                oninput="updateSaleTotalPreview()"
                                class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3.5 py-2 text-sm font-mono focus:border-emerald-500 focus:outline-none">
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Unit Selling Price (₦)</label>
                         <input type="number" step="0.01" name="unit_price" id="saleUnitPrice"
-                               value="{{ $productionBatches[0]['metrics']['recommended_selling_price'] ?? 1700 }}" min="0.01" required
+                               value="{{ number_format($defaultRecPrice, 2, '.', '') }}" min="0.01" required
                                oninput="updateSaleTotalPreview()"
                                class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-emerald-700 dark:text-emerald-300 px-3.5 py-2 text-sm font-mono font-bold focus:border-emerald-500 focus:outline-none">
                     </div>
@@ -171,7 +192,7 @@
                 <div class="p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-between font-mono text-xs">
                     <span class="text-emerald-800 dark:text-emerald-300 font-sans font-medium">Total Invoice Amount:</span>
                     <span id="saleTotalPreview" class="text-sm font-bold text-emerald-700 dark:text-emerald-300">
-                        ₦{{ number_format(50 * ($productionBatches[0]['metrics']['recommended_selling_price'] ?? 1700), 2) }}
+                        ₦{{ number_format($defaultRecPrice, 2) }}
                     </span>
                 </div>
 
@@ -280,11 +301,11 @@
                                                 {{ $sale['payment_status'] }}
                                             </span>
                                             @if ($balDue > 0)
-                                                <button type="button" onclick="openCollectPaymentModal({{ $sale['id'] }}, {{ json_encode($sale['buyer_name'] ?? 'Customer') }}, {{ $balDue }})" class="px-2 py-0.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-[10px] font-mono font-bold cursor-pointer">
+                                                <button type="button" onclick="openCollectPaymentModal({{ (int)$sale['id'] }})" class="px-2 py-0.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-[10px] font-mono font-bold cursor-pointer">
                                                     Collect
                                                 </button>
                                             @endif
-                                            <button type="button" onclick='openSaleReceiptModal(@json($sale), @json($pb["batch_code"]), @json($pb["flock_type"]))' class="px-2 py-0.5 rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[10px] font-mono font-semibold cursor-pointer" title="Print Receipt">
+                                            <button type="button" onclick="openSaleReceiptModal({{ (int)$sale['id'] }})" class="px-2 py-0.5 rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[10px] font-mono font-semibold cursor-pointer" title="Print Receipt">
                                                 <i class="fa-solid fa-print"></i>
                                             </button>
                                         </div>
@@ -346,16 +367,106 @@
 </div>
 
 <script>
-function openCollectPaymentModal(saleId, customerName, balanceDue) {
-    document.getElementById('collectSaleId').value = saleId;
-    document.getElementById('collectCustomerName').innerText = customerName;
-    document.getElementById('collectBalanceDue').innerText = '₦' + Number(balanceDue).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    document.getElementById('collectPaymentAmount').value = Number(balanceDue).toFixed(2);
+window.salesBatchesMap = <?php
+$_sbMap = [];
+$_srMap = [];
+foreach (($productionBatches ?? []) as $_pb) {
+    $_pbId = (int) ($_pb['id'] ?? 0);
+    $_sbMap[$_pbId] = [
+        'id' => $_pbId,
+        'batch_code' => $_pb['batch_code'] ?? '',
+        'flock_type' => $_pb['flock_type'] ?? '',
+        'status' => $_pb['status'] ?? 'Active',
+        'age_days' => (int) ($_pb['age_days'] ?? 0),
+        'age_weeks' => (int) ($_pb['age_weeks'] ?? 0),
+        'metrics' => $_pb['metrics'] ?? [],
+    ];
+    foreach (($_pb['sales'] ?? []) as $_sl) {
+        $_slId = (int) ($_sl['id'] ?? 0);
+        $_srMap[$_slId] = array_merge($_sl, [
+            'batch_code' => $_pb['batch_code'] ?? '',
+            'flock_type' => $_pb['flock_type'] ?? '',
+        ]);
+    }
+}
+echo json_encode($_sbMap, JSON_UNESCAPED_UNICODE);
+?>;
+window.salesRecordsMap = <?php echo json_encode($_srMap, JSON_UNESCAPED_UNICODE); ?>;
+
+function formatSalesNaira(val, decimals = 2) {
+    const num = Number(val) || 0;
+    return '₦' + num.toLocaleString('en-NG', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+    });
+}
+
+function previewBatchMargin(batchId, costPerBird, marginPct) {
+    const pct = parseFloat(marginPct) || 0;
+    const recPrice = Number(costPerBird) * (1 + (pct / 100));
+    const profitPerBird = recPrice - Number(costPerBird);
+    const el = document.getElementById('marginPreview_' + batchId);
+    if (el) {
+        el.textContent = 'Live Preview: ' + formatSalesNaira(recPrice, 2) + ' / bird (+' + formatSalesNaira(profitPerBird, 2) + ' profit/bird)';
+    }
+}
+
+function setPresetMargin(batchId, costPerBird, presetPct) {
+    const input = document.getElementById('marginInput_' + batchId);
+    if (input) {
+        input.value = presetPct;
+        previewBatchMargin(batchId, costPerBird, presetPct);
+    }
+}
+
+function syncRecommendedPriceToSale() {
+    const sel = document.getElementById('saleBatchSelect');
+    const priceInput = document.getElementById('saleUnitPrice');
+    const qtyInput = document.getElementById('saleBirdsQty');
+    if (!sel || !priceInput) return;
+    const opt = sel.options[sel.selectedIndex];
+    if (!opt) return;
+    const rec = opt.getAttribute('data-rec-price');
+    const avail = parseInt(opt.getAttribute('data-available') || '0', 10);
+    if (rec !== null && rec !== '') {
+        priceInput.value = parseFloat(rec).toFixed(2);
+    }
+    if (qtyInput && avail > 0) {
+        qtyInput.max = String(avail);
+        if ((parseInt(qtyInput.value || '1', 10) || 1) > avail) {
+            qtyInput.value = String(avail);
+        }
+    }
+    updateSaleTotalPreview();
+}
+
+function updateSaleTotalPreview() {
+    const qtyEl = document.getElementById('saleBirdsQty');
+    const priceEl = document.getElementById('saleUnitPrice');
+    const previewEl = document.getElementById('saleTotalPreview');
+    if (!qtyEl || !priceEl || !previewEl) return;
+    const qty = Math.max(0, parseInt(qtyEl.value, 10) || 0);
+    const price = Math.max(0, parseFloat(priceEl.value) || 0);
+    previewEl.textContent = formatSalesNaira(qty * price, 2);
+}
+
+function openCollectPaymentModal(saleId) {
+    const sale = window.salesRecordsMap[String(saleId)] || window.salesRecordsMap[saleId];
+    if (!sale) return;
+    const bal = sale.balance_due !== undefined ? Number(sale.balance_due) : Math.max(0, Number(sale.total_amount || 0) - Number(sale.amount_paid || 0));
+    document.getElementById('collectSaleId').value = sale.id;
+    document.getElementById('collectCustomerName').innerText = sale.buyer_name || 'Customer';
+    document.getElementById('collectBalanceDue').innerText = formatSalesNaira(bal, 2);
+    document.getElementById('collectPaymentAmount').value = bal.toFixed(2);
     openModal('collectPaymentModal');
 }
 
-function openSaleReceiptModal(sale, batchCode, flockType) {
-    const fmt = (n) => '₦' + Number(n || 0).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function openSaleReceiptModal(saleId) {
+    const sale = window.salesRecordsMap[String(saleId)] || window.salesRecordsMap[saleId];
+    if (!sale) return;
+    const batchCode = sale.batch_code || '';
+    const flockType = sale.flock_type || '';
+    const fmt = (n) => formatSalesNaira(n, 2);
     const paid = sale.amount_paid !== undefined ? sale.amount_paid : (sale.payment_status === 'Paid' ? sale.total_amount : 0);
     const bal = sale.balance_due !== undefined ? sale.balance_due : Math.max(0, Number(sale.total_amount) - Number(paid));
     document.getElementById('printModalTitle').innerText = 'Customer Sales Receipt #' + sale.id;
@@ -382,9 +493,13 @@ function openSaleReceiptModal(sale, batchCode, flockType) {
     openModal('printReportModal');
 }
 
-function openBatchPnLModal(pb) {
+function openBatchPnLModal(batchId) {
+    const pb = (typeof batchId === 'object' && batchId !== null)
+        ? batchId
+        : (window.salesBatchesMap[String(batchId)] || window.salesBatchesMap[batchId]);
+    if (!pb) return;
     const m = pb.metrics || {};
-    const fmt = (n) => '₦' + Number(n || 0).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmt = (n) => formatSalesNaira(n, 2);
     const net = Number(m.realized_revenue || 0) - Number(m.total_accumulated_cost || 0);
     document.getElementById('printModalTitle').innerText = 'Batch P&L Report • ' + pb.batch_code;
     document.getElementById('printDocumentBody').innerHTML = `
@@ -419,5 +534,7 @@ function printDocumentArea() {
     win.document.write('<html><head><title>' + title + '</title><script src="https://cdn.tailwindcss.com"><\/script></head><body class="p-8 font-sans text-slate-900"><h1 class="text-xl font-bold mb-1">Blackswan Farms and General Enterprises</h1><h2 class="text-sm text-slate-600 mb-4">' + title + '</h2>' + body + '<script>setTimeout(() => window.print(), 400);<\/script></body></html>');
     win.document.close();
 }
+
+syncRecommendedPriceToSale();
 </script>
 @endsection

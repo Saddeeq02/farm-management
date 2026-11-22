@@ -260,13 +260,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'update_target_margin':
                 $batchId = (int) ($_POST['production_batch_id'] ?? 0);
                 $farm->updateProductionBatchConfig($batchId, $_POST);
-                $_SESSION['flash_success'] = 'Target profit margin updated and Recommended Selling Price per Bird recalculated.';
+                $setFlash('flash_success', 'Target profit margin updated and Recommended Selling Price per Bird recalculated.');
                 header('Location: /?page=sales');
                 exit;
 
             case 'record_batch_sale':
                 $farm->recordBatchSale($_POST);
-                $_SESSION['flash_success'] = 'Commercial bird sale recorded: live flock count deducted and realized revenue updated.';
+                $setFlash('flash_success', 'Commercial bird sale recorded: live flock count deducted and realized revenue updated.');
                 header('Location: /?page=sales');
                 exit;
 
@@ -274,7 +274,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $saleId = (int) ($_POST['sale_id'] ?? 0);
                 $paymentAmount = (float) ($_POST['payment_amount'] ?? 0);
                 $farm->recordSalePayment($saleId, $paymentAmount);
-                $_SESSION['flash_success'] = 'Customer balance payment recorded and receivables updated.';
+                $setFlash('flash_success', 'Customer balance payment recorded and receivables updated.');
                 header('Location: /?page=sales');
                 exit;
 

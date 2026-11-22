@@ -430,7 +430,8 @@ class FarmService
 
             $startTs = strtotime($batch['start_date']);
             $daysInHouse = max(1, (int) floor((time() - $startTs) / 86400) + 1);
-            $batchDailyRent = round($rentPerLiveBirdPerDay * $currentInHouseBirds, 2);
+            $rentBirdBasis = $currentInHouseBirds > 0 ? $currentInHouseBirds : $survivingBiologicalPool;
+            $batchDailyRent = round($rentPerLiveBirdPerDay * $rentBirdBasis, 2);
             $accumulatedGeneralRent = round($batchDailyRent * $daysInHouse, 2);
 
             $incubationCost = (float) $batch['transferred_incubation_cost'];
@@ -973,11 +974,9 @@ class FarmService
             ? round((float) $input['selling_price_per_bird'], 2)
             : 0.0;
 
-        if ($sellingPrice > 0 && $costPerChick > 0) {
-            $targetMargin = round(max(0.0, (($sellingPrice - $costPerChick) / $costPerChick) * 100), 2);
-        } else {
-            $targetMargin = isset($input['target_profit_margin_pct']) ? max(0.0, (float) $input['target_profit_margin_pct']) : 30.00;
-        }
+        $targetMargin = isset($input['target_profit_margin_pct']) && $input['target_profit_margin_pct'] !== ''
+            ? max(0.0, (float) $input['target_profit_margin_pct'])
+            : 30.00;
         $targetSellingPrice = $sellingPrice > 0 ? $sellingPrice : round($costPerChick * (1 + ($targetMargin / 100)), 2);
 
         return $this->db->insert('production_batches', [
@@ -1251,6 +1250,20 @@ class FarmService
         }
 
         $birdsSold = max(1, (int) ($input['birds_sold'] ?? 1));
+        $logs = $this->db->where('production_daily_logs', 'production_batch_id', $batchId);
+        $existingSales = $this->db->where('batch_sales', 'production_batch_id', $batchId);
+        $totalMortality = array_sum(array_map(fn($l) => (int) ($l['mortality_count'] ?? 0), $logs));
+        $totalAlreadySold = array_sum(array_map(fn($s) => (int) ($s['birds_sold'] ?? 0), $existingSales));
+        $initialBirds = max(1, (int) ($batch['initial_bird_count'] ?? 1));
+        $availableBirds = max(0, $initialBirds - $totalMortality - $totalAlreadySold);
+
+        if ($availableBirds <= 0) {
+            throw new RuntimeException("No unsold live birds remaining in {$batch['batch_code']}.");
+        }
+        if ($birdsSold > $availableBirds) {
+            throw new RuntimeException("Cannot sell {$birdsSold} bird(s): only {$availableBirds} unsold bird(s) available in {$batch['batch_code']}.");
+        }
+
         $unitPrice = max(0.0, (float) ($input['unit_price'] ?? 0));
         $totalAmount = round($birdsSold * $unitPrice, 2);
         $rawStatus = in_array($input['payment_status'] ?? '', ['Paid', 'Partial', 'Pending'], true)
@@ -1280,14 +1293,14 @@ class FarmService
             'payment_status' => $status,
         ]);
 
-        $newCount = max(0, (int) $batch['current_bird_count'] - $birdsSold);
+        $newCount = max(0, $availableBirds - $birdsSold);
         $this->db->update('production_batches', $batchId, [
             'current_bird_count' => $newCount,
             'status' => $newCount === 0 ? 'Depleted' : 'Active',
         ]);
 
         $this->addAiMemory(
-            "Market price realized on {$batch['batch_code']} ({$batch['flock_type']}): {$qtySold} birds sold at ₦" . number_format($unitPrice, 2) . "/bird.",
+            "Market price realized on {$batch['batch_code']} ({$batch['flock_type']}): {$birdsSold} birds sold at ₦" . number_format($unitPrice, 2) . "/bird.",
             'sales'
         );
 
@@ -2867,21 +2880,17 @@ class FarmService
         $initialAgeDays = max(1, (int) ($input['initial_age_days'] ?? $batch['initial_age_days'] ?? 1));
         $startDate = !empty($input['start_date']) ? (string) $input['start_date'] : (string) $batch['start_date'];
         $docCost = max(0.0, (float) ($input['transferred_incubation_cost'] ?? $batch['transferred_incubation_cost'] ?? 0));
-        $status = in_array($input['status'] ?? '', ['Active', 'Completed'], true)
+        $status = in_array($input['status'] ?? '', ['Active', 'Completed', 'Depleted'], true)
             ? (string) $input['status']
             : (string) ($batch['status'] ?? 'Active');
 
         $currentBirds = max(0, $initialBirds - $totalMortality - $totalSold);
-        $costPerChick = $docCost / $initialBirds;
 
         $sellingPrice = isset($input['selling_price_per_bird']) && $input['selling_price_per_bird'] !== ''
             ? round(max(0.0, (float) $input['selling_price_per_bird']), 2)
             : (float) ($batch['target_selling_price'] ?? 0);
 
         $targetMargin = (float) ($batch['target_profit_margin_pct'] ?? 30.0);
-        if ($sellingPrice > 0 && $costPerChick > 0) {
-            $targetMargin = round(max(0.0, (($sellingPrice - $costPerChick) / $costPerChick) * 100), 2);
-        }
 
         $this->db->update('production_batches', $batchId, [
             'batch_code' => $batchCode,
