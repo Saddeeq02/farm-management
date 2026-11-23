@@ -65,6 +65,61 @@
         </div>
     </div>
 
+    <!-- Post-Sales Profit Distribution Waterfall (Gross Profit → Fixed Deductions → Net Profit) -->
+    @php
+        $grossProfitVal = (float) ($fin['gross_farm_profit'] ?? 0);
+        $grossMarginVal = (float) ($fin['gross_margin_pct'] ?? 0);
+        $totalVarCostVal = (float) ($fin['total_variable_cost'] ?? 0);
+        $totalFixedDeductVal = (float) ($fin['total_fixed_costs_and_assets'] ?? 0);
+        $netProfitVal = (float) ($fin['net_farm_profit'] ?? 0);
+    @endphp
+    <div class="glass-card rounded-2xl p-5 border border-slate-200/80 dark:border-slate-800 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 dark:border-slate-800 pb-3">
+            <div>
+                <h3 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <i class="fa-solid fa-scale-balanced text-emerald-500"></i> Post-Sales Profit Distribution (Gross → Net Waterfall)
+                </h3>
+                <p class="text-[11px] text-slate-500 dark:text-slate-400">
+                    Variable flock costs (DOC/Incubation, Feed, Water, Labour, Meds, Sanitation) drive Gross Profit &amp; bird pricing. Fixed Assets, Incubator Machine, Rent &amp; General Overhead are deducted below for Whole-Farm Net Profit.
+                </p>
+            </div>
+            <span class="px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold {{ $grossProfitVal >= 0 ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-rose-500/15 text-rose-700 dark:text-rose-300' }}">
+                Gross Margin: {{ number_format($grossMarginVal, 1) }}%
+            </span>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 font-mono">
+            <div class="p-3.5 rounded-xl bg-white/75 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800">
+                <span class="text-[10px] font-sans font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">1. Total Sales Revenue</span>
+                <div class="text-lg font-extrabold text-cyan-600 dark:text-cyan-400 mt-1">₦{{ number_format((float)($fin['total_sales_billed'] ?? 0), 2) }}</div>
+                <span class="text-[10px] font-sans text-slate-500 dark:text-slate-400">Collected: ₦{{ number_format((float)($fin['cash_collected'] ?? 0), 0) }}</span>
+            </div>
+            <div class="p-3.5 rounded-xl bg-white/75 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800">
+                <span class="text-[10px] font-sans font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">2. − Variable Flock Costs</span>
+                <div class="text-lg font-extrabold text-slate-900 dark:text-white mt-1">₦{{ number_format($totalVarCostVal, 2) }}</div>
+                <span class="text-[10px] font-sans text-slate-500 dark:text-slate-400">DOC, Feed, Water, Labour, Meds</span>
+            </div>
+            <div class="p-3.5 rounded-xl border {{ $grossProfitVal >= 0 ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-rose-500/40 bg-rose-500/10' }}">
+                <span class="text-[10px] font-sans font-semibold uppercase tracking-wider {{ $grossProfitVal >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300' }} block">3. = Whole-Farm Gross Profit</span>
+                <div class="text-lg font-extrabold {{ $grossProfitVal >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400' }} mt-1">
+                    {{ $grossProfitVal >= 0 ? '+' : '' }}₦{{ number_format($grossProfitVal, 2) }}
+                </div>
+                <span class="text-[10px] font-sans text-slate-600 dark:text-slate-300">Before fixed deductions</span>
+            </div>
+            <div class="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30">
+                <span class="text-[10px] font-sans font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-300 block">4. − Fixed Assets &amp; Overhead</span>
+                <div class="text-lg font-extrabold text-amber-700 dark:text-amber-300 mt-1">₦{{ number_format($totalFixedDeductVal, 2) }}</div>
+                <span class="text-[10px] font-sans text-slate-600 dark:text-slate-300">Assets, Incubator, Rent, Overh.</span>
+            </div>
+            <div class="p-3.5 rounded-xl border {{ $netProfitVal >= 0 ? 'border-emerald-500/50 bg-emerald-500/15' : 'border-rose-500/50 bg-rose-500/15' }}">
+                <span class="text-[10px] font-sans font-semibold uppercase tracking-wider {{ $netProfitVal >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300' }} block">5. = Whole-Farm Net Profit</span>
+                <div class="text-lg font-extrabold {{ $netProfitVal >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400' }} mt-1">
+                    {{ $netProfitVal >= 0 ? '+' : '' }}₦{{ number_format($netProfitVal, 2) }}
+                </div>
+                <span class="text-[10px] font-sans text-slate-600 dark:text-slate-300">After all fixed deductions</span>
+            </div>
+        </div>
+    </div>
+
     <!-- Top 4 Executive Financial KPIs -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div class="glass-card rounded-2xl p-4 border border-amber-500/30">
@@ -105,7 +160,7 @@
                 {{ $fin['net_farm_profit'] >= 0 ? '+' : '' }}₦{{ number_format($fin['net_farm_profit'], 2) }}
             </div>
             <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-mono">
-                Billed Revenue minus Operating Cost
+                Gross Profit minus Fixed Assets, Rent &amp; Overhead
             </p>
         </div>
     </div>
@@ -392,15 +447,19 @@
                         <th class="py-2 pr-3">Count</th>
                         <th class="py-2 pr-3 text-right">Base Cost</th>
                         <th class="py-2 pr-3 text-right">Feed &amp; Meds</th>
-                        <th class="py-2 pr-3 text-right">Overhead</th>
-                        <th class="py-2 pr-3 text-right">Total Cost</th>
+                        <th class="py-2 pr-3 text-right">Labour / Other</th>
+                        <th class="py-2 pr-3 text-right">Variable Cost</th>
                         <th class="py-2 pr-3 text-right">Billed Rev</th>
                         <th class="py-2 pr-3 text-right">Collected</th>
-                        <th class="py-2 text-right">Net P&amp;L</th>
+                        <th class="py-2 text-right">Gross Profit</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-200/70 dark:divide-slate-800/70 font-mono">
                     @foreach ($fin['batches'] as $row)
+                        @php
+                            $rowVarCost = (float) ($row['variable_cost'] ?? $row['total_cost'] ?? 0);
+                            $rowGross = (float) ($row['gross_profit'] ?? $row['net_profit'] ?? 0);
+                        @endphp
                         <tr>
                             <td class="py-2.5 pr-3">
                                 <div class="font-bold text-slate-900 dark:text-white">{{ $row['batch_code'] }}</div>
@@ -415,11 +474,11 @@
                             <td class="py-2.5 pr-3 text-right text-slate-700 dark:text-slate-300">₦{{ number_format($row['base_cost'], 0) }}</td>
                             <td class="py-2.5 pr-3 text-right text-slate-700 dark:text-slate-300">₦{{ number_format($row['feed_med_cost'], 0) }}</td>
                             <td class="py-2.5 pr-3 text-right text-slate-700 dark:text-slate-300">₦{{ number_format($row['overhead_other'], 0) }}</td>
-                            <td class="py-2.5 pr-3 text-right font-bold text-slate-900 dark:text-white">₦{{ number_format($row['total_cost'], 0) }}</td>
+                            <td class="py-2.5 pr-3 text-right font-bold text-slate-900 dark:text-white">₦{{ number_format($rowVarCost, 0) }}</td>
                             <td class="py-2.5 pr-3 text-right text-cyan-600 dark:text-cyan-400">₦{{ number_format($row['revenue_billed'], 0) }}</td>
                             <td class="py-2.5 pr-3 text-right text-emerald-600 dark:text-emerald-400">₦{{ number_format($row['cash_collected'], 0) }}</td>
-                            <td class="py-2.5 text-right font-bold {{ $row['net_profit'] >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400' }}">
-                                {{ $row['net_profit'] >= 0 ? '+' : '' }}₦{{ number_format($row['net_profit'], 0) }}
+                            <td class="py-2.5 text-right font-bold {{ $rowGross >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400' }}">
+                                {{ $rowGross >= 0 ? '+' : '' }}₦{{ number_format($rowGross, 0) }}
                             </td>
                         </tr>
                     @endforeach
@@ -444,9 +503,9 @@ function printWholeFarmStatement() {
                 </div>
                 <div class="text-right font-mono text-xs">
                     <div>Total Net Worth (At Cost): <strong>₦{{ number_format((float)($fin['total_net_worth'] ?? 0), 2) }}</strong></div>
-                    <div>Projected Market Net Worth: <strong>₦{{ number_format((float)($fin['projected_market_net_worth'] ?? 0), 2) }}</strong></div>
-                    <div>Grand Total All-In Costs: <strong>₦{{ number_format((float)($fin['grand_total_all_costs'] ?? 0), 2) }}</strong></div>
-                    <div>Net Position: <strong>₦{{ number_format($fin['net_farm_profit'], 2) }}</strong></div>
+                    <div>Whole-Farm Gross Profit (Variable): <strong>₦{{ number_format((float)($fin['gross_farm_profit'] ?? 0), 2) }}</strong></div>
+                    <div>Fixed Assets, Rent &amp; Overhead: <strong>₦{{ number_format((float)($fin['total_fixed_costs_and_assets'] ?? 0), 2) }}</strong></div>
+                    <div>Whole-Farm Net Profit: <strong>₦{{ number_format($fin['net_farm_profit'], 2) }}</strong></div>
                 </div>
             </div>
             ${tableHtml}

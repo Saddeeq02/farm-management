@@ -438,27 +438,32 @@ class FarmService
             $manualHouseRent = (float) $batch['house_rent_total'];
             $houseRent = $manualHouseRent > 0 ? $manualHouseRent : $accumulatedGeneralRent;
             $variableCost = $totalFeedCost + $totalMedCost + $totalLaborCost + $totalSanitationCost + $totalWaterOtherCost;
-            $totalAccumulatedCost = $incubationCost + $houseRent + $variableCost;
+            // ONLY variable flock costs (DOC/Incubation expenses + Feed + Water + Labour + Medications + Sanitation/Other Variable)
+            // are divided into chicks/birds and drive Cost/Bird, Selling Price, and Gross Profit.
+            // Fixed Assets, Annual Rent, and General Farm Overhead are deducted strictly at Whole-Farm Net Profit.
+            $variableChickenCost = round($incubationCost + $variableCost, 2);
+            $totalAccumulatedCost = $variableChickenCost;
 
-            // Current Cost per Bird = (Incubation + House Rent + Sum(Feed + Med + Labor + Sanitation)) / Surviving Bird Count
-            // Note: surviving biological birds absorb all mortalities; we also compute cost per unsold in-house bird
-            $costPerSurvivingBird = round($totalAccumulatedCost / $survivingBiologicalPool, 2);
+            // Current Variable Cost per Bird = (DOC/Incubation + Feed + Meds + Water + Labour + Sanitation) / Surviving Bird Count
+            $costPerSurvivingBird = round($variableChickenCost / $survivingBiologicalPool, 2);
             $costPerInHouseBird = $currentInHouseBirds > 0
-                ? round(max(0.0, $totalAccumulatedCost - ($totalBirdsSold * $costPerSurvivingBird)) / $currentInHouseBirds, 2)
+                ? round(max(0.0, $variableChickenCost - ($totalBirdsSold * $costPerSurvivingBird)) / $currentInHouseBirds, 2)
                 : $costPerSurvivingBird;
 
             // Cost per bird without mortality (to show exact mortality absorption impact)
-            $costWithoutMortality = round($totalAccumulatedCost / $initialBirds, 2);
+            $costWithoutMortality = round($variableChickenCost / $initialBirds, 2);
             $mortalityCostAbsorbedPerBird = round(max(0.0, $costPerSurvivingBird - $costWithoutMortality), 2);
 
             $marginPct = (float) $batch['target_profit_margin_pct'];
             $recommendedSellingPrice = round($costPerSurvivingBird * (1 + ($marginPct / 100)), 2);
 
-            // Projected total revenue across all surviving biological birds (sold at actual + remaining at recommended)
+            // Projected total revenue & Gross Profit across surviving birds (variable chicken costs only)
             $projectedRemainingRevenue = round($currentInHouseBirds * $recommendedSellingPrice, 2);
             $projectedTotalRevenue = round($realizedRevenue + $projectedRemainingRevenue, 2);
-            $projectedNetProfit = round($projectedTotalRevenue - $totalAccumulatedCost, 2);
-            $realizedNetBalance = round($realizedRevenue - $totalAccumulatedCost, 2);
+            $projectedGrossProfit = round($projectedTotalRevenue - $variableChickenCost, 2);
+            $realizedGrossProfit = round($realizedRevenue - $variableChickenCost, 2);
+            $projectedNetProfit = $projectedGrossProfit;
+            $realizedNetBalance = $realizedGrossProfit;
 
             // Age calculation & Feed Transition Alert (respects initial_age_days for direct grower purchases)
             $initialAgeDays = max(1, (int) ($batch['initial_age_days'] ?? 1));
@@ -507,19 +512,24 @@ class FarmService
                 'batch_daily_rent' => $batchDailyRent,
                 'days_in_house' => $daysInHouse,
                 'variable_cost' => $variableCost,
+                'variable_chicken_cost' => $variableChickenCost,
                 'total_accumulated_cost' => $totalAccumulatedCost,
                 'cost_per_bird' => $costPerSurvivingBird,
+                'variable_cost_per_bird' => $costPerSurvivingBird,
                 'cost_per_in_house_bird' => $costPerInHouseBird,
                 'mortality_absorbed_per_bird' => $mortalityCostAbsorbedPerBird,
                 'target_margin_pct' => $marginPct,
                 'target_selling_price' => (float) ($batch['target_selling_price'] ?? $recommendedSellingPrice),
                 'recommended_selling_price' => $recommendedSellingPrice,
                 'profit_per_bird' => round($recommendedSellingPrice - $costPerSurvivingBird, 2),
+                'gross_profit_per_bird' => round($recommendedSellingPrice - $costPerSurvivingBird, 2),
                 'realized_revenue' => $realizedRevenue,
                 'paid_revenue' => $paidRevenue,
                 'total_receivables' => round($batchReceivables ?? 0, 2),
                 'projected_remaining_revenue' => $projectedRemainingRevenue,
                 'projected_total_revenue' => $projectedTotalRevenue,
+                'projected_gross_profit' => $projectedGrossProfit,
+                'realized_gross_profit' => $realizedGrossProfit,
                 'projected_net_profit' => $projectedNetProfit,
                 'realized_net_balance' => $realizedNetBalance,
             ];
@@ -1884,11 +1894,13 @@ class FarmService
                 'units_label' => number_format((int) ($m['initial_birds'] ?? 0)) . ' init / ' . number_format($remBirds) . ' live / ' . number_format($soldBirds) . ' sold',
                 'base_cost' => $carriedBase,
                 'feed_med_cost' => $feedCost + $medCost,
-                'overhead_other' => $rentShare + $otherOps,
+                'overhead_other' => $otherOps,
+                'variable_cost' => $accumCost,
                 'total_cost' => $accumCost,
                 'revenue_billed' => $rev,
                 'cash_collected' => $collected,
                 'receivables' => $rec,
+                'gross_profit' => round($rev - $accumCost, 2),
                 'net_profit' => round($rev - $accumCost, 2),
             ];
         }
@@ -1931,10 +1943,12 @@ class FarmService
                 'base_cost' => $ibEggCost,
                 'feed_med_cost' => 0.0,
                 'overhead_other' => $ibGasCost + $ibRepairCost,
+                'variable_cost' => $incCost,
                 'total_cost' => $incCost,
                 'revenue_billed' => $svcFee,
                 'cash_collected' => $svcPaid,
                 'receivables' => $svcDue,
+                'gross_profit' => round($svcFee - $incCost, 2),
                 'net_profit' => round($svcFee - $incCost, 2),
             ];
         }
@@ -2031,10 +2045,12 @@ class FarmService
                 'base_cost' => round($lfPurchase, 2),
                 'feed_med_cost' => round((float) ($lf['total_feed_cost'] ?? 0) + (float) ($lf['total_med_cost'] ?? 0), 2),
                 'overhead_other' => 0.0,
+                'variable_cost' => $lfTotalCost,
                 'total_cost' => $lfTotalCost,
                 'revenue_billed' => $lfBilled,
                 'cash_collected' => $lfCollected,
                 'receivables' => $lfDue,
+                'gross_profit' => round($lfBilled - $lfTotalCost, 2),
                 'net_profit' => round($lfBilled - $lfTotalCost, 2),
             ];
         }
@@ -2049,10 +2065,12 @@ class FarmService
                 'base_cost' => 0.0,
                 'feed_med_cost' => 0.0,
                 'overhead_other' => 0.0,
+                'variable_cost' => 0.0,
                 'total_cost' => 0.0,
                 'revenue_billed' => round($unassignedEggBilled, 2),
                 'cash_collected' => round($unassignedEggCollected, 2),
                 'receivables' => round($unassignedEggDue, 2),
+                'gross_profit' => round($unassignedEggBilled, 2),
                 'net_profit' => round($unassignedEggBilled, 2),
             ];
         }
@@ -2071,9 +2089,14 @@ class FarmService
         $cashCollectedAll += (float) ($layersOverview['summary']['egg_sales_collected'] ?? 0);
         $receivablesAll += (float) ($layersOverview['summary']['egg_sales_receivables'] ?? 0);
 
-        $totalOperatingCost = round($totalProdCost + $untransferredIncCost + $totalLayerOperatingCost, 2);
+        $totalVariableCost = round($totalProdCost + $untransferredIncCost + $totalLayerOperatingCost, 2);
+        $totalOperatingCost = $totalVariableCost;
+        $grossFarmProfit = round($billedAll - $totalVariableCost, 2);
+        $grossMarginPct = $billedAll > 0 ? round(($grossFarmProfit / $billedAll) * 100, 1) : 0.0;
+        $totalFixedCostsAndAssets = round($fixedCapitalTotal + $annualRent + $totalGeneralOverhead, 2);
+        // Post-Sales Net Profit = Gross Profit (Variable Chicken Costs only) minus Fixed Assets, Annual Rent & General Overhead
+        $netFarmProfit = round($grossFarmProfit - $totalFixedCostsAndAssets, 2);
         $totalFlowAssets = round($liveFlockAssetValue + $incubatorEggAssetValue + $eggStockroomValue + $storeInventoryValue + $receivablesAll, 2);
-        $netFarmProfit = round($billedAll - $totalOperatingCost, 2);
         $totalNetWorth = round($fixedCapitalTotal + $totalFlowAssets + $cashCollectedAll, 2);
         $projectedMarketNetWorth = round($fixedCapitalTotal + $projectedLiveFlockMarketValue + $incubatorEggAssetValue + $eggStockroomMarketValue + $storeInventoryValue + $receivablesAll + $cashCollectedAll, 2);
         $grandTotalAllCosts = round(
@@ -2094,6 +2117,7 @@ class FarmService
             'fixed_capital_total' => round($fixedCapitalTotal, 2),
             'annual_farm_rent' => round($annualRent, 2),
             'total_fixed_and_rent' => round($fixedCapitalTotal + $annualRent, 2),
+            'total_fixed_costs_and_assets' => $totalFixedCostsAndAssets,
             'monthly_depreciation' => round($monthlyDepTotal, 2),
             'monthly_rent' => $monthlyRent,
             'monthly_general_overhead' => round($monthlyOverhead, 2),
@@ -2116,6 +2140,9 @@ class FarmService
             'projected_market_net_worth' => $projectedMarketNetWorth,
 
             'total_sales_billed' => round($billedAll, 2),
+            'total_variable_cost' => $totalVariableCost,
+            'gross_farm_profit' => $grossFarmProfit,
+            'gross_margin_pct' => $grossMarginPct,
             'spend_incubation_and_doc' => round($totalIncubationSpend + $totalDirectDoc, 2),
             'spend_direct_flock_purchases' => round($totalDirectDoc, 2),
             'spend_production_doc' => round($totalProdDirectDoc, 2),

@@ -54,17 +54,17 @@
                     <div class="p-6 space-y-5">
                         <div class="grid grid-cols-2 sm:grid-cols-3 gap-3.5 font-mono">
                             <div class="p-3.5 rounded-xl bg-white/80 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-700/70">
-                                <span class="text-[10px] font-sans font-semibold uppercase text-slate-500 dark:text-slate-400 block">Accumulated Batch Cost</span>
+                                <span class="text-[10px] font-sans font-semibold uppercase text-slate-500 dark:text-slate-400 block">Variable Flock Cost</span>
                                 <span class="text-sm font-bold text-slate-900 dark:text-white mt-1 block">₦{{ number_format($m['total_accumulated_cost'], 2) }}</span>
                                 <span class="text-[11px] font-sans text-slate-500 dark:text-slate-400">{{ $m['surviving_biological_birds'] }} surviving pool</span>
                             </div>
                             <div class="p-3.5 rounded-xl bg-white/80 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-700/70">
-                                <span class="text-[10px] font-sans font-semibold uppercase text-slate-500 dark:text-slate-400 block">Exact Breakeven / Bird</span>
+                                <span class="text-[10px] font-sans font-semibold uppercase text-slate-500 dark:text-slate-400 block">Variable Cost / Bird</span>
                                 <span class="text-sm font-bold text-slate-900 dark:text-white mt-1 block">₦{{ number_format($m['cost_per_bird'], 2) }}</span>
                                 <span class="text-[11px] font-sans text-rose-600 dark:text-rose-400">+₦{{ number_format($m['mortality_absorbed_per_bird'], 2) }} mortality absorbed</span>
                             </div>
                             <div class="p-3.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 col-span-2 sm:col-span-1">
-                                <span class="text-[10px] font-sans font-semibold uppercase text-emerald-700 dark:text-emerald-300 block">Net Profit / Bird</span>
+                                <span class="text-[10px] font-sans font-semibold uppercase text-emerald-700 dark:text-emerald-300 block">Gross Profit / Bird</span>
                                 <span class="text-sm font-bold text-emerald-700 dark:text-emerald-300 mt-1 block">+₦{{ number_format($m['profit_per_bird'], 2) }}</span>
                                 <span class="text-[11px] font-sans text-emerald-700 dark:text-emerald-300">@ {{ number_format($m['target_margin_pct'], 1) }}% Margin</span>
                             </div>
@@ -77,7 +77,7 @@
                                 <span class="font-mono font-bold text-slate-900 dark:text-white">₦{{ number_format($m['projected_total_revenue'], 2) }}</span>
                             </div>
                             <div class="flex items-center justify-between">
-                                <span class="text-slate-600 dark:text-slate-300 font-medium">Projected Net Batch Profit:</span>
+                                <span class="text-slate-600 dark:text-slate-300 font-medium">Projected Batch Gross Profit:</span>
                                 <span class="font-mono font-bold {{ $m['projected_net_profit'] >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400' }}">
                                     {{ $m['projected_net_profit'] >= 0 ? '+' : '' }}₦{{ number_format($m['projected_net_profit'], 2) }}
                                 </span>
@@ -86,6 +86,9 @@
                                 <span class="text-slate-500 dark:text-slate-400">Realized Sales Revenue ({{ $m['total_birds_sold'] }} birds sold):</span>
                                 <span class="font-mono font-semibold text-slate-800 dark:text-slate-200">₦{{ number_format($m['realized_revenue'], 2) }}</span>
                             </div>
+                            <p class="text-[10px] text-slate-400 dark:text-slate-500 pt-1">
+                                Variable chicken costs only — Fixed Assets, Incubator Machine, Rent &amp; General Overhead are deducted in Finance Net Profit.
+                            </p>
                         </div>
 
                         <!-- Target Profit Margin Configuration Form -->
@@ -509,20 +512,20 @@ function openBatchPnLModal(batchId) {
             <div class="flex justify-between"><span class="text-slate-500">Flock Pool:</span><span class="font-mono">Init ${m.initial_birds} | Dead ${m.total_mortality} (${m.mortality_rate_pct}%) | Sold ${m.total_birds_sold} | Live ${m.current_in_house_birds}</span></div>
         </div>
         <div class="p-4 rounded-2xl bg-white border border-slate-200 space-y-1.5 font-mono">
-            <div class="font-sans font-bold text-slate-700 mb-1">Expense Breakdown</div>
+            <div class="font-sans font-bold text-slate-700 mb-1">Variable Flock Expense Breakdown</div>
             <div class="flex justify-between"><span>DOC / Incubation Base:</span><span>${fmt(m.incubation_cost)}</span></div>
-            <div class="flex justify-between"><span>General Farm Rent &amp; Overhead:</span><span>${fmt(m.house_rent)}</span></div>
             <div class="flex justify-between"><span>Feed Consumed (${m.total_feed_kg} kg):</span><span>${fmt(m.total_feed_cost)}</span></div>
             <div class="flex justify-between"><span>Medications &amp; Vaccines:</span><span>${fmt(m.total_med_cost)}</span></div>
             <div class="flex justify-between"><span>Labor, Sanitation &amp; Water/Other:</span><span>${fmt(Number(m.total_labor_cost || 0) + Number(m.total_sanitation_cost || 0) + Number(m.total_water_other_cost || 0))}</span></div>
-            <div class="flex justify-between pt-2 border-t border-slate-200 font-bold text-slate-900"><span>Total Accumulated Cost:</span><span>${fmt(m.total_accumulated_cost)}</span></div>
+            <div class="flex justify-between pt-2 border-t border-slate-200 font-bold text-slate-900"><span>Total Variable Flock Cost:</span><span>${fmt(m.total_accumulated_cost)}</span></div>
         </div>
         <div class="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 space-y-1.5 font-mono">
-            <div class="flex justify-between"><span>Breakeven Cost / Bird:</span><strong>${fmt(m.cost_per_bird)}</strong></div>
+            <div class="flex justify-between"><span>Variable Cost / Bird:</span><strong>${fmt(m.cost_per_bird)}</strong></div>
             <div class="flex justify-between"><span>Realized Sales Revenue:</span><strong>${fmt(m.realized_revenue)}</strong></div>
             <div class="flex justify-between"><span>Projected Total Revenue:</span><strong>${fmt(m.projected_total_revenue)}</strong></div>
-            <div class="flex justify-between pt-2 border-t border-emerald-200 ${net >= 0 ? 'text-emerald-700' : 'text-rose-600'}"><span>Realized Net Profit / Loss:</span><strong>${fmt(net)}</strong></div>
+            <div class="flex justify-between pt-2 border-t border-emerald-200 ${net >= 0 ? 'text-emerald-700' : 'text-rose-600'}"><span>Realized Gross Profit / (Loss):</span><strong>${fmt(net)}</strong></div>
         </div>
+        <p class="text-[10px] text-slate-500 italic">Fixed Assets, Incubator Machine, Annual Rent &amp; General Overhead are deducted at the whole-farm level in Finance → Net Profit Distribution.</p>
     `;
     openModal('printReportModal');
 }

@@ -318,7 +318,7 @@
                 </div>
                 <div class="flex flex-wrap items-center gap-6 text-right font-mono">
                     <div>
-                        <span class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 block">Live Breakeven Cost / Bird</span>
+                        <span class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 block">Live Variable Cost / Bird</span>
                         <span class="text-lg font-bold text-slate-900 dark:text-white">₦{{ number_format($m['cost_per_bird'], 2) }} <span class="text-xs font-normal text-slate-500 dark:text-slate-400">/ bird</span></span>
                     </div>
                     <div class="pl-5 border-l border-slate-300/70 dark:border-slate-700/70">
@@ -349,10 +349,10 @@
                     <div class="text-[11px] text-slate-500 dark:text-slate-400">Carried Capital</div>
                 </div>
                 <div class="p-3.5">
-                    <span class="text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400">Farm Rent (Live/Day)</span>
-                    <div class="text-sm font-bold font-mono text-slate-900 dark:text-white mt-0.5">₦{{ number_format($m['house_rent'], 2) }}</div>
-                    <div class="text-[11px] text-amber-700 dark:text-amber-300 font-mono">
-                        ₦{{ number_format((float)($m['rent_per_bird_per_day'] ?? 0), 2) }}/bird/day • ₦{{ number_format((float)($m['batch_daily_rent'] ?? 0), 0) }}/day
+                    <span class="text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400">Gross Margin / Bird</span>
+                    <div class="text-sm font-bold font-mono text-emerald-700 dark:text-emerald-300 mt-0.5">+₦{{ number_format((float)($m['gross_profit_per_bird'] ?? $m['profit_per_bird'] ?? 0), 2) }}</div>
+                    <div class="text-[11px] text-slate-500 dark:text-slate-400">
+                        Fixed assets in Net Profit
                     </div>
                 </div>
                 <div class="p-3.5">
@@ -371,7 +371,7 @@
                     <div class="text-[11px] text-slate-500 dark:text-slate-400">L: ₦{{ number_format($m['total_labor_cost'], 0) }} • S: ₦{{ number_format($m['total_sanitation_cost'], 0) }} • O: ₦{{ number_format($m['total_water_other_cost'] ?? 0, 0) }}</div>
                 </div>
                 <div class="p-3.5 bg-emerald-500/15 dark:bg-emerald-500/20">
-                    <span class="text-[10px] font-semibold uppercase text-emerald-700 dark:text-emerald-300">Total Batch Cost</span>
+                    <span class="text-[10px] font-semibold uppercase text-emerald-700 dark:text-emerald-300">Total Variable Flock Cost</span>
                     <div class="text-sm font-bold font-mono text-emerald-700 dark:text-emerald-300 mt-0.5">₦{{ number_format($m['total_accumulated_cost'], 2) }}</div>
                     <div class="text-[11px] text-emerald-700 dark:text-emerald-300">Absorbed Mortality: +₦{{ number_format($m['mortality_absorbed_per_bird'], 2) }}/bird</div>
                 </div>
@@ -663,16 +663,16 @@ function openBatchPnLModal(batchOrId) {
                     <tr><td class="py-1.5 font-sans">Incubation / DOC Carried Capital</td><td class="py-1.5 text-right">${fmtCurrency(m.incubation_cost)}</td></tr>
                     <tr><td class="py-1.5 font-sans">Feed Consumed (${m.total_feed_kg || 0} kg)</td><td class="py-1.5 text-right">${fmtCurrency(m.total_feed_cost)}</td></tr>
                     <tr><td class="py-1.5 font-sans">Medication &amp; Vaccines</td><td class="py-1.5 text-right">${fmtCurrency(m.total_med_cost)}</td></tr>
-                    <tr><td class="py-1.5 font-sans">Farm Overhead &amp; Rent Share</td><td class="py-1.5 text-right">${fmtCurrency(m.house_rent)}</td></tr>
-                    <tr><td class="py-1.5 font-sans">Labor, Sanitation &amp; Other</td><td class="py-1.5 text-right">${fmtCurrency(otherCost)}</td></tr>
-                    <tr class="font-bold bg-slate-50"><td class="py-2 font-sans">Total Accumulated Cost</td><td class="py-2 text-right">${fmtCurrency(totalCost)}</td></tr>
+                    <tr><td class="py-1.5 font-sans">Labor, Sanitation &amp; Water/Other</td><td class="py-1.5 text-right">${fmtCurrency(otherCost)}</td></tr>
+                    <tr class="font-bold bg-slate-50"><td class="py-2 font-sans">Total Variable Flock Cost</td><td class="py-2 text-right">${fmtCurrency(totalCost)}</td></tr>
                     <tr class="font-bold text-emerald-700"><td class="py-2 font-sans">Total Sales Revenue</td><td class="py-2 text-right">${fmtCurrency(totalRev)}</td></tr>
                     <tr class="font-extrabold text-sm ${netProfit >= 0 ? 'text-emerald-700 bg-emerald-50' : 'text-rose-700 bg-rose-50'}">
-                        <td class="py-2.5 font-sans">Net Profit / (Loss)</td>
+                        <td class="py-2.5 font-sans">Batch Gross Profit / (Loss)</td>
                         <td class="py-2.5 text-right">${netProfit >= 0 ? '+' : ''}${fmtCurrency(netProfit)}</td>
                     </tr>
                 </tbody>
             </table>
+            <p class="text-[10px] text-slate-500 italic">Note: Fixed Assets, Incubator Machine, Annual Rent &amp; General Overhead are deducted at the whole-farm level in Finance → Net Profit Distribution.</p>
         </div>
     `;
     openModal('printReportModal');
