@@ -348,6 +348,8 @@ class FarmService
             $totalCrackedEggs = 0;
             $totalWaterLiters = 0.0;
             $totalFeedGrams = 0.0;
+            $totalWastedFeedGrams = 0.0;
+            $totalWastedFeedCost = 0.0;
             $totalFeedCost = 0.0;
             $totalMedDose = 0.0;
             $totalMedCost = 0.0;
@@ -363,8 +365,12 @@ class FarmService
                 $totalCrackedEggs += $logCrackedEggs;
                 $totalMortality += (int) $log['mortality_count'];
                 $totalWaterLiters += (float) $log['water_liters'];
+                $logWastedFeedGrams = (float) ($log['wasted_feed_grams'] ?? 0);
+                $logWastedFeedCost = (float) ($log['wasted_feed_cost'] ?? 0);
                 $totalFeedGrams += (float) $log['feed_grams'];
-                $totalFeedCost += (float) $log['feed_cost_calculated'];
+                $totalWastedFeedGrams += $logWastedFeedGrams;
+                $totalWastedFeedCost += $logWastedFeedCost;
+                $totalFeedCost += (float) $log['feed_cost_calculated'] + $logWastedFeedCost;
                 $totalMedDose += (float) $log['med_dose_g_ml'];
                 $totalMedCost += (float) $log['med_cost_calculated'];
                 $totalLaborCost += (float) $log['labor_cost'];
@@ -376,6 +382,8 @@ class FarmService
                 $medItem = isset($log['med_item_id']) ? ($invMap[(int) $log['med_item_id']] ?? null) : null;
                 $batchLogs[$idx]['good_eggs'] = $logGoodEggs;
                 $batchLogs[$idx]['cracked_eggs'] = $logCrackedEggs;
+                $batchLogs[$idx]['wasted_feed_grams'] = $logWastedFeedGrams;
+                $batchLogs[$idx]['wasted_feed_cost'] = $logWastedFeedCost;
                 $batchLogs[$idx]['feed_item_name'] = $feedItem['item_name'] ?? 'None';
                 $batchLogs[$idx]['feed_category'] = $feedItem['category'] ?? null;
                 if (!empty($log['medications_used']) && is_array($log['medications_used'])) {
@@ -393,6 +401,7 @@ class FarmService
                 }
                 $batchLogs[$idx]['water_other_cost'] = $waterOtherCost;
                 $batchLogs[$idx]['daily_total_cost'] = (float) $log['feed_cost_calculated']
+                    + $logWastedFeedCost
                     + (float) $log['med_cost_calculated']
                     + (float) $log['labor_cost']
                     + (float) $log['sanitation_cost']
@@ -500,6 +509,9 @@ class FarmService
                 'total_water_liters' => $totalWaterLiters,
                 'total_feed_grams' => $totalFeedGrams,
                 'total_feed_kg' => round($totalFeedGrams / 1000, 4),
+                'total_wasted_feed_grams' => round($totalWastedFeedGrams, 4),
+                'total_wasted_feed_kg' => round($totalWastedFeedGrams / 1000, 4),
+                'total_wasted_feed_cost' => round($totalWastedFeedCost, 2),
                 'total_feed_cost' => $totalFeedCost,
                 'total_med_dose' => $totalMedDose,
                 'total_med_cost' => $totalMedCost,
@@ -1110,17 +1122,21 @@ class FarmService
         $mortality = max(0, (int) ($input['mortality_count'] ?? 0));
         $waterLiters = round(max(0.0, (float) ($input['water_liters'] ?? 0)), 4);
 
-        // Feed consumption (in grams)
+        // Feed consumption & spilled/wasted feed (in grams)
         $feedItemId = !empty($input['feed_item_id']) ? (int) $input['feed_item_id'] : null;
         $feedGrams = round(max(0.0, (float) ($input['feed_grams'] ?? 0)), 4);
+        $wastedFeedGrams = round(max(0.0, (float) ($input['wasted_feed_grams'] ?? 0)), 4);
         $feedCostCalculated = 0.0;
+        $wastedFeedCost = 0.0;
 
-        if ($feedItemId && $feedGrams > 0) {
+        if ($feedItemId && ($feedGrams > 0 || $wastedFeedGrams > 0)) {
             $feedItem = $this->db->findById('inventory_items', $feedItemId);
             if ($feedItem) {
                 $unitCost = (float) $feedItem['unit_cost_per_g_or_ml'];
                 $feedCostCalculated = round($feedGrams * $unitCost, 2);
-                $newRemaining = max(0.0, (float) $feedItem['total_quantity_g_or_ml'] - $feedGrams);
+                $wastedFeedCost = round($wastedFeedGrams * $unitCost, 2);
+                $totalDeduct = round($feedGrams + $wastedFeedGrams, 4);
+                $newRemaining = max(0.0, (float) $feedItem['total_quantity_g_or_ml'] - $totalDeduct);
                 $this->db->update('inventory_items', $feedItemId, [
                     'total_quantity_g_or_ml' => round($newRemaining, 4),
                 ]);
@@ -1204,6 +1220,8 @@ class FarmService
             'feed_item_id' => $feedItemId,
             'feed_grams' => $feedGrams,
             'feed_cost_calculated' => $feedCostCalculated,
+            'wasted_feed_grams' => $wastedFeedGrams,
+            'wasted_feed_cost' => $wastedFeedCost,
             'med_item_id' => $medItemId,
             'med_dose_g_ml' => $medDose,
             'med_cost_calculated' => $medCostCalculated,
@@ -2945,11 +2963,11 @@ class FarmService
             throw new InvalidArgumentException('Parent production batch not found.');
         }
 
-        // Step A: Refund previous feed consumption back to inventory
+        // Step A: Refund previous feed consumption + wasted feed back to inventory
         $oldFeedId = (int) ($oldLog['feed_item_id'] ?? 0);
-        $oldFeedGrams = (float) ($oldLog['feed_grams'] ?? 0);
-        if ($oldFeedId > 0 && $oldFeedGrams > 0) {
-            $this->adjustInventoryBalance($oldFeedId, $oldFeedGrams);
+        $oldFeedTotalGrams = (float) ($oldLog['feed_grams'] ?? 0) + (float) ($oldLog['wasted_feed_grams'] ?? 0);
+        if ($oldFeedId > 0 && $oldFeedTotalGrams > 0) {
+            $this->adjustInventoryBalance($oldFeedId, $oldFeedTotalGrams);
         }
 
         // Step B: Refund previous medications back to inventory
@@ -2965,15 +2983,19 @@ class FarmService
             $this->adjustInventoryBalance((int) $oldLog['med_item_id'], (float) $oldLog['med_dose_g_ml']);
         }
 
-        // Step C: Deduct updated feed consumption
+        // Step C: Deduct updated feed consumption + wasted feed
         $newFeedId = !empty($input['feed_item_id']) ? (int) $input['feed_item_id'] : null;
         $newFeedGrams = round(max(0.0, (float) ($input['feed_grams'] ?? 0)), 4);
+        $newWastedFeedGrams = round(max(0.0, (float) ($input['wasted_feed_grams'] ?? 0)), 4);
         $newFeedCost = 0.0;
-        if ($newFeedId && $newFeedGrams > 0) {
+        $newWastedFeedCost = 0.0;
+        if ($newFeedId && ($newFeedGrams > 0 || $newWastedFeedGrams > 0)) {
             $feedItem = $this->db->findById('inventory_items', $newFeedId);
             if ($feedItem) {
-                $newFeedCost = round($newFeedGrams * (float) ($feedItem['unit_cost_per_g_or_ml'] ?? 0), 2);
-                $this->adjustInventoryBalance($newFeedId, -$newFeedGrams);
+                $unitCost = (float) ($feedItem['unit_cost_per_g_or_ml'] ?? 0);
+                $newFeedCost = round($newFeedGrams * $unitCost, 2);
+                $newWastedFeedCost = round($newWastedFeedGrams * $unitCost, 2);
+                $this->adjustInventoryBalance($newFeedId, -round($newFeedGrams + $newWastedFeedGrams, 4));
             }
         }
 
@@ -3028,6 +3050,8 @@ class FarmService
             'feed_item_id' => $newFeedId,
             'feed_grams' => $newFeedGrams,
             'feed_cost_calculated' => $newFeedCost,
+            'wasted_feed_grams' => $newWastedFeedGrams,
+            'wasted_feed_cost' => $newWastedFeedCost,
             'med_item_id' => $newMedItemId,
             'med_dose_g_ml' => $newMedDose,
             'med_cost_calculated' => $newMedCost,
@@ -3211,6 +3235,145 @@ class FarmService
             'unit_cost_per_g_or_ml' => $unitCost,
             'purchase_date' => !empty($input['purchase_date']) ? (string) $input['purchase_date'] : (string) ($item['purchase_date'] ?? date('Y-m-d')),
         ]);
+    }
+
+    /**
+     * Store-level Damaged / Spoiled Stock Waste Logs (subtracted from inventory & logged in General Overhead).
+     */
+    public function getInventoryWasteLogs(): array
+    {
+        $rows = $this->db->getTable('inventory_waste_logs');
+        $invMap = [];
+        foreach ($this->db->getTable('inventory_items') as $it) {
+            $invMap[(int) ($it['id'] ?? 0)] = $it;
+        }
+        foreach ($rows as $idx => $r) {
+            $it = $invMap[(int) ($r['inventory_item_id'] ?? 0)] ?? null;
+            $rows[$idx]['item_name'] = $it['item_name'] ?? ($r['item_name'] ?? 'Deleted Item');
+            $rows[$idx]['unit_label'] = (($it['unit_type'] ?? $r['unit_label'] ?? 'g') === 'ml') ? 'ml' : 'g';
+        }
+        usort($rows, fn($a, $b) => strcmp($b['waste_date'] ?? '', $a['waste_date'] ?? '') ?: ((int) ($b['id'] ?? 0) <=> (int) ($a['id'] ?? 0)));
+        return $rows;
+    }
+
+    public function addInventoryWaste(array $input): int
+    {
+        $itemId = (int) ($input['inventory_item_id'] ?? 0);
+        $item = $this->db->findById('inventory_items', $itemId);
+        if (!$item) {
+            throw new InvalidArgumentException('Selected inventory item does not exist.');
+        }
+
+        $unitMode = (string) ($input['input_unit_mode'] ?? 'g');
+        $rawQty = max(0.0001, (float) ($input['quantity_value'] ?? 0));
+        $qtyBase = ($unitMode === 'kg' || $unitMode === 'l') ? round($rawQty * 1000.0, 4) : round($rawQty, 4);
+        $unitLabel = (($item['unit_type'] ?? 'g') === 'ml') ? 'ml' : 'g';
+        $unitCost = (float) ($item['unit_cost_per_g_or_ml'] ?? 0);
+        $wasteCost = round($qtyBase * $unitCost, 2);
+        $wasteDate = !empty($input['waste_date']) ? (string) $input['waste_date'] : date('Y-m-d');
+        $reason = trim((string) ($input['reason'] ?? '')) ?: 'Damaged / Spoiled Stock';
+
+        $this->adjustInventoryBalance($itemId, -$qtyBase);
+
+        $genExpenseId = null;
+        if ($wasteCost > 0) {
+            $genExpenseId = $this->db->insert('general_farm_expenses', [
+                'expense_date' => $wasteDate,
+                'category' => 'Feed / Stock Waste',
+                'description' => $item['item_name'] . ' (' . self::fmtQty($qtyBase) . $unitLabel . ') — ' . $reason,
+                'amount' => $wasteCost,
+            ]);
+        }
+
+        return $this->db->insert('inventory_waste_logs', [
+            'inventory_item_id' => $itemId,
+            'item_name' => $item['item_name'],
+            'unit_label' => $unitLabel,
+            'waste_date' => $wasteDate,
+            'quantity_g_or_ml' => $qtyBase,
+            'waste_cost' => $wasteCost,
+            'reason' => $reason,
+            'general_expense_id' => $genExpenseId,
+        ]);
+    }
+
+    public function updateInventoryWaste(int $wasteId, array $input): void
+    {
+        $old = $this->db->findById('inventory_waste_logs', $wasteId);
+        if (!$old) {
+            throw new InvalidArgumentException('Stock waste record not found.');
+        }
+
+        // Refund old wasted quantity back to inventory
+        $oldItemId = (int) ($old['inventory_item_id'] ?? 0);
+        $oldQty = (float) ($old['quantity_g_or_ml'] ?? 0);
+        if ($oldItemId > 0 && $oldQty > 0) {
+            $this->adjustInventoryBalance($oldItemId, $oldQty);
+        }
+
+        $newItemId = !empty($input['inventory_item_id']) ? (int) $input['inventory_item_id'] : $oldItemId;
+        $item = $this->db->findById('inventory_items', $newItemId);
+        if (!$item) {
+            throw new InvalidArgumentException('Selected inventory item does not exist.');
+        }
+
+        $unitMode = (string) ($input['input_unit_mode'] ?? 'g');
+        $rawQty = max(0.0001, (float) ($input['quantity_value'] ?? 0));
+        $newQtyBase = ($unitMode === 'kg' || $unitMode === 'l') ? round($rawQty * 1000.0, 4) : round($rawQty, 4);
+        $unitLabel = (($item['unit_type'] ?? 'g') === 'ml') ? 'ml' : 'g';
+        $unitCost = (float) ($item['unit_cost_per_g_or_ml'] ?? 0);
+        $newWasteCost = round($newQtyBase * $unitCost, 2);
+        $wasteDate = !empty($input['waste_date']) ? (string) $input['waste_date'] : (string) ($old['waste_date'] ?? date('Y-m-d'));
+        $reason = trim((string) ($input['reason'] ?? '')) ?: 'Damaged / Spoiled Stock';
+
+        // Deduct updated quantity from inventory
+        $this->adjustInventoryBalance($newItemId, -$newQtyBase);
+
+        // Sync linked general overhead expense
+        $genExpenseId = !empty($old['general_expense_id']) ? (int) $old['general_expense_id'] : null;
+        if ($genExpenseId && $this->db->findById('general_farm_expenses', $genExpenseId)) {
+            $this->db->update('general_farm_expenses', $genExpenseId, [
+                'expense_date' => $wasteDate,
+                'description' => $item['item_name'] . ' (' . self::fmtQty($newQtyBase) . $unitLabel . ') — ' . $reason,
+                'amount' => $newWasteCost,
+            ]);
+        } elseif ($newWasteCost > 0) {
+            $genExpenseId = $this->db->insert('general_farm_expenses', [
+                'expense_date' => $wasteDate,
+                'category' => 'Feed / Stock Waste',
+                'description' => $item['item_name'] . ' (' . self::fmtQty($newQtyBase) . $unitLabel . ') — ' . $reason,
+                'amount' => $newWasteCost,
+            ]);
+        }
+
+        $this->db->update('inventory_waste_logs', $wasteId, [
+            'inventory_item_id' => $newItemId,
+            'item_name' => $item['item_name'],
+            'unit_label' => $unitLabel,
+            'waste_date' => $wasteDate,
+            'quantity_g_or_ml' => $newQtyBase,
+            'waste_cost' => $newWasteCost,
+            'reason' => $reason,
+            'general_expense_id' => $genExpenseId,
+        ]);
+    }
+
+    public function deleteInventoryWaste(int $wasteId): void
+    {
+        $old = $this->db->findById('inventory_waste_logs', $wasteId);
+        if (!$old) {
+            return;
+        }
+        $oldItemId = (int) ($old['inventory_item_id'] ?? 0);
+        $oldQty = (float) ($old['quantity_g_or_ml'] ?? 0);
+        if ($oldItemId > 0 && $oldQty > 0) {
+            $this->adjustInventoryBalance($oldItemId, $oldQty);
+        }
+        $genExpenseId = !empty($old['general_expense_id']) ? (int) $old['general_expense_id'] : 0;
+        if ($genExpenseId > 0) {
+            $this->db->delete('general_farm_expenses', $genExpenseId);
+        }
+        $this->db->delete('inventory_waste_logs', $wasteId);
     }
 
     public function exportFullBackup(): array

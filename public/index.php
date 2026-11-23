@@ -106,7 +106,11 @@ $blade = new BladeEngine(
 );
 
 $currentPage = $_GET['page'] ?? 'dashboard';
-$allowedPages = ['dashboard', 'incubation', 'layers', 'eggs', 'inventory', 'production', 'sales', 'finance', 'ai'];
+if ($currentPage === 'layers' && $_SERVER['REQUEST_METHOD'] !== 'POST') {
+    header('Location: /?page=eggs');
+    exit;
+}
+$allowedPages = ['dashboard', 'incubation', 'eggs', 'inventory', 'production', 'sales', 'finance', 'ai'];
 if (!in_array($currentPage, $allowedPages, true)) {
     $currentPage = 'dashboard';
 }
@@ -437,6 +441,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $setFlash('flash_success', 'Inventory item updated and exact base-unit cost recalculated.');
                 header('Location: /?page=inventory');
                 exit;
+
+            case 'add_inventory_waste':
+                $farm->addInventoryWaste($_POST);
+                $setFlash('flash_success', 'Damaged / wasted stock subtracted from inventory and logged under General Overhead.');
+                header('Location: /?page=inventory');
+                exit;
+
+            case 'update_inventory_waste':
+                $farm->updateInventoryWaste((int) ($_POST['waste_id'] ?? 0), $_POST);
+                $setFlash('flash_success', 'Stock waste record updated and inventory balance resynced.');
+                header('Location: /?page=inventory');
+                exit;
+
+            case 'delete_inventory_waste':
+                $farm->deleteInventoryWaste((int) ($_POST['waste_id'] ?? 0));
+                $setFlash('flash_success', 'Stock waste record deleted and quantity refunded back to store inventory.');
+                header('Location: /?page=inventory');
+                exit;
         }
     } catch (Throwable $e) {
         $setFlash('flash_error', $e->getMessage());
@@ -473,6 +495,7 @@ if ($isPartialRequest) {
         'layersOverview' => in_array($currentPage, ['layers', 'eggs'], true) ? $farm->getLayersOverview() : [],
         'generalRent' => in_array($currentPage, ['inventory', 'production'], true) ? $farm->getGeneralRentMetrics() : [],
         'generalExpenses' => $currentPage === 'inventory' ? $farm->getGeneralFarmExpenses() : [],
+        'inventoryWasteLogs' => $currentPage === 'inventory' ? $farm->getInventoryWasteLogs() : [],
         'wholeFarmFinancials' => $currentPage === 'finance' ? $farm->getWholeFarmFinancials() : [],
         'reminders' => [],
         'aiChatHistory' => $currentPage === 'ai' ? $ai->getChatHistory() : [],
@@ -503,6 +526,7 @@ $viewData = [
     'layersOverview' => in_array($currentPage, ['layers', 'eggs', 'finance'], true) ? $farm->getLayersOverview() : [],
     'generalRent' => in_array($currentPage, ['inventory', 'production', 'finance'], true) ? $farm->getGeneralRentMetrics() : [],
     'generalExpenses' => in_array($currentPage, ['inventory', 'finance'], true) ? $farm->getGeneralFarmExpenses() : [],
+    'inventoryWasteLogs' => $currentPage === 'inventory' ? $farm->getInventoryWasteLogs() : [],
     'wholeFarmFinancials' => $currentPage === 'finance' ? $farm->getWholeFarmFinancials() : [],
     'reminders' => $farm->getActiveReminders(),
     'aiChatHistory' => $ai->getChatHistory(),

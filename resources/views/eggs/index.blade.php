@@ -2,7 +2,7 @@
 
 @section('title', 'Eggs Stockroom & Distribution — Blackswan Farms and General Enterprises')
 @section('page_heading', 'Eggs Stockroom, Hatch Transfers & Sales')
-@section('page_subheading', 'Track available egg crates across Layer & Production flocks, auto-price from feed & meds consumed, transfer to Incubator, or sell.')
+@section('page_subheading', 'Track available egg crates from your Production flocks, auto-price from feed & meds consumed, transfer to Incubator, or sell.')
 
 @section('content')
 @php
@@ -52,12 +52,6 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-2.5">
-            <a href="/?page=layers"
-               class="px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-900/70 hover:bg-slate-200/70 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-mono font-bold transition flex items-center gap-1.5">
-                <i class="fa-solid fa-feather text-emerald-500"></i>
-                <span>Layers</span>
-                <i class="fa-solid fa-arrow-right text-[10px]"></i>
-            </a>
             <a href="/?page=production"
                class="px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-900/70 hover:bg-slate-200/70 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-mono font-bold transition flex items-center gap-1.5">
                 <i class="fa-solid fa-kiwi-bird text-cyan-500"></i>

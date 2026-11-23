@@ -113,11 +113,19 @@
                                 @endforeach
                             </select>
                         </div>
-                        <div>
-                            <label class="block text-[11px] text-slate-600 dark:text-slate-400 mb-1">Weight Consumed in Grams (e.g. 150000 or 0.245)</label>
-                            <input type="number" step="any" name="feed_grams" id="prodFeedGrams" value="150000" min="0"
-                                   oninput="updateDailyTelemetryCostPreview()"
-                                   class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-1.5 text-xs font-mono focus:border-emerald-500 focus:outline-none">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            <div>
+                                <label class="block text-[11px] text-slate-600 dark:text-slate-400 mb-1">Feed Eaten (Grams)</label>
+                                <input type="number" step="any" name="feed_grams" id="prodFeedGrams" value="150000" min="0"
+                                       oninput="updateDailyTelemetryCostPreview()"
+                                       class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-1.5 text-xs font-mono focus:border-emerald-500 focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] text-rose-600 dark:text-rose-400 mb-1">Wasted / Spilled Feed (Grams)</label>
+                                <input type="number" step="any" name="wasted_feed_grams" id="prodWastedFeedGrams" value="0" min="0"
+                                       oninput="updateDailyTelemetryCostPreview()"
+                                       class="w-full rounded-xl border border-rose-300 dark:border-rose-500/40 bg-rose-50/50 dark:bg-rose-950/20 text-slate-900 dark:text-white px-3 py-1.5 text-xs font-mono focus:border-rose-500 focus:outline-none">
+                            </div>
                         </div>
                     </div>
 
@@ -358,7 +366,12 @@
                 <div class="p-3.5">
                     <span class="text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400">Feed Consumed</span>
                     <div class="text-sm font-bold font-mono text-slate-900 dark:text-white mt-0.5">₦{{ number_format($m['total_feed_cost'], 2) }}</div>
-                    <div class="text-[11px] text-slate-500 dark:text-slate-400">{{ \App\Core\FarmService::fmtQty((float)$m['total_feed_grams']) }}g ({{ \App\Core\FarmService::fmtQty((float)$m['total_feed_kg']) }}kg)</div>
+                    <div class="text-[11px] text-slate-500 dark:text-slate-400">
+                        {{ \App\Core\FarmService::fmtQty((float)$m['total_feed_grams']) }}g ({{ \App\Core\FarmService::fmtQty((float)$m['total_feed_kg']) }}kg)
+                        @if ((float)($m['total_wasted_feed_grams'] ?? 0) > 0)
+                            <span class="block text-[10px] text-rose-600 dark:text-rose-400">+{{ \App\Core\FarmService::fmtQty((float)$m['total_wasted_feed_grams']) }}g wasted (₦{{ number_format((float)($m['total_wasted_feed_cost'] ?? 0), 0) }})</span>
+                        @endif
+                    </div>
                 </div>
                 <div class="p-3.5">
                     <span class="text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400">Medication &amp; Vaccines</span>
@@ -417,8 +430,11 @@
                                 <td class="py-2.5 font-sans text-slate-800 dark:text-slate-100">
                                     {{ $log['feed_item_name'] }}
                                     <span class="font-mono text-slate-500 dark:text-slate-400">({{ \App\Core\FarmService::fmtQty((float)$log['feed_grams']) }}g)</span>
+                                    @if ((float)($log['wasted_feed_grams'] ?? 0) > 0)
+                                        <span class="block font-mono text-[10px] text-rose-600 dark:text-rose-400">+{{ \App\Core\FarmService::fmtQty((float)$log['wasted_feed_grams']) }}g wasted</span>
+                                    @endif
                                 </td>
-                                <td class="py-2.5 text-right text-slate-800 dark:text-slate-100">₦{{ number_format((float)$log['feed_cost_calculated'], 2) }}</td>
+                                <td class="py-2.5 text-right text-slate-800 dark:text-slate-100">₦{{ number_format((float)$log['feed_cost_calculated'] + (float)($log['wasted_feed_cost'] ?? 0), 2) }}</td>
                                 <td class="py-2.5 font-sans text-slate-800 dark:text-slate-100">
                                     {{ $log['med_item_name'] }}
                                     @if (empty($log['has_multi_meds']) && (float)$log['med_dose_g_ml'] > 0)
@@ -734,6 +750,7 @@ foreach ($productionBatches ?? [] as $_pb) {
             'water_liters' => (float) ($_lg['water_liters'] ?? 0),
             'feed_item_id' => (int) ($_lg['feed_item_id'] ?? 0),
             'feed_grams' => (float) ($_lg['feed_grams'] ?? 0),
+            'wasted_feed_grams' => (float) ($_lg['wasted_feed_grams'] ?? 0),
             'med_item_id' => (int) ($_lg['med_item_id'] ?? 0),
             'med_dose_g_ml' => (float) ($_lg['med_dose_g_ml'] ?? 0),
             'medications_used' => $_lg['medications_used'] ?? [],
@@ -775,6 +792,7 @@ function openEditProdLogModal(logId) {
     document.getElementById('editProdLogCrackedEggs').value = l.cracked_eggs ?? 0;
     document.getElementById('editProdLogFeedItem').value = l.feed_item_id ? String(l.feed_item_id) : '';
     document.getElementById('editProdLogFeedGrams').value = l.feed_grams ?? 0;
+    document.getElementById('editProdLogWastedFeedGrams').value = l.wasted_feed_grams ?? 0;
     document.getElementById('editProdLogLabor').value = l.labor_cost ?? 0;
     document.getElementById('editProdLogSanit').value = l.sanitation_cost ?? 0;
     document.getElementById('editProdLogWaterOther').value = l.water_other_cost ?? 0;
@@ -969,10 +987,17 @@ function openEditProdLogModal(logId) {
                             @endforeach
                         </select>
                     </div>
-                    <div>
-                        <label class="block text-[11px] text-slate-600 dark:text-slate-400 mb-1">Grams Consumed (decimals allowed e.g. 0.245)</label>
-                        <input type="number" step="any" min="0" name="feed_grams" id="editProdLogFeedGrams"
-                               class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-2.5 py-1.5 text-xs font-mono focus:border-amber-500 focus:outline-none">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-[11px] text-slate-600 dark:text-slate-400 mb-1">Feed Eaten (g)</label>
+                            <input type="number" step="any" min="0" name="feed_grams" id="editProdLogFeedGrams"
+                                   class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-2.5 py-1.5 text-xs font-mono focus:border-amber-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] text-rose-600 dark:text-rose-400 mb-1">Wasted Feed (g)</label>
+                            <input type="number" step="any" min="0" name="wasted_feed_grams" id="editProdLogWastedFeedGrams"
+                                   class="w-full rounded-xl border border-rose-300 dark:border-rose-500/40 bg-rose-50/50 dark:bg-rose-950/20 text-slate-900 dark:text-white px-2.5 py-1.5 text-xs font-mono focus:border-rose-500 focus:outline-none">
+                        </div>
                     </div>
                 </div>
 

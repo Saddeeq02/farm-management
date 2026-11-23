@@ -325,7 +325,6 @@
               ['page' => 'dashboard',  'label' => 'Dashboard',  'icon' => 'fa-gauge-high',    'sub' => 'Executive Overview'],
               ['page' => 'incubation', 'label' => 'Incubator',  'icon' => 'fa-egg',           'sub' => 'Hatchery & Setters'],
               ['page' => 'production', 'label' => 'Production', 'icon' => 'fa-kiwi-bird',     'sub' => 'Flock Telemetry'],
-              ['page' => 'layers',     'label' => 'Layers',     'icon' => 'fa-feather',       'sub' => 'Laying Flocks'],
               ['page' => 'eggs',       'label' => 'Eggs',       'icon' => 'fa-egg',           'sub' => 'Stock, Hatch & Sales'],
               ['page' => 'inventory',  'label' => 'Inventory',  'icon' => 'fa-boxes-stacked', 'sub' => 'Feed & Vaccines'],
               ['page' => 'sales',      'label' => 'Sales',      'icon' => 'fa-receipt',        'sub' => 'Revenue & Orders'],

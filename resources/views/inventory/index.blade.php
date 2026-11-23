@@ -320,6 +320,144 @@
             </table>
         </div>
     </div>
+
+    <!-- Damaged / Spoiled Store Stock Waste Ledger -->
+    <div class="glass-card rounded-2xl p-5 border border-rose-500/30 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+                <h3 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <i class="fa-solid fa-trash-can-arrow-up text-rose-500"></i> Store Damaged / Wasted Stock Ledger
+                </h3>
+                <p class="text-xs text-slate-500 dark:text-slate-300">
+                    Record torn, wet, or spoiled feed/medicine bags in store. Automatically subtracts from store stock and logs loss under General Overhead (editable anytime).
+                </p>
+            </div>
+            <button type="button" onclick="openAddWasteModal()"
+                    class="px-3.5 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-700 dark:text-rose-300 border border-rose-500/35 text-xs font-mono font-bold transition cursor-pointer flex items-center gap-1.5">
+                <i class="fa-solid fa-minus-circle"></i> Log Damaged / Wasted Stock
+            </button>
+        </div>
+
+        <div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-950/40">
+            <table class="w-full text-left text-xs">
+                <thead>
+                    <tr class="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 bg-slate-100/70 dark:bg-slate-900/60">
+                        <th class="py-2.5 px-3">Date</th>
+                        <th class="py-2.5 px-3">Stock Item</th>
+                        <th class="py-2.5 px-3">Reason</th>
+                        <th class="py-2.5 px-3 text-right">Qty Wasted</th>
+                        <th class="py-2.5 px-3 text-right">Loss Value</th>
+                        <th class="py-2.5 px-3 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-200/70 dark:divide-slate-800/70 font-mono">
+                    @forelse (($inventoryWasteLogs ?? []) as $wl)
+                        <tr>
+                            <td class="py-2.5 px-3 text-slate-600 dark:text-slate-300">{{ $wl['waste_date'] ?? '' }}</td>
+                            <td class="py-2.5 px-3 font-sans font-semibold text-slate-900 dark:text-white">{{ $wl['item_name'] ?? '' }}</td>
+                            <td class="py-2.5 px-3 font-sans text-slate-600 dark:text-slate-300">{{ $wl['reason'] ?? '' }}</td>
+                            <td class="py-2.5 px-3 text-right text-rose-600 dark:text-rose-400 font-semibold">-{{ \App\Core\FarmService::fmtQty((float)($wl['quantity_g_or_ml'] ?? 0)) }} {{ $wl['unit_label'] ?? 'g' }}</td>
+                            <td class="py-2.5 px-3 text-right font-bold text-slate-900 dark:text-white">₦{{ number_format((float)($wl['waste_cost'] ?? 0), 2) }}</td>
+                            <td class="py-2.5 px-3 text-right whitespace-nowrap">
+                                <button type="button" onclick="openEditWasteModal({{ (int)$wl['id'] }})"
+                                        class="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[11px] font-sans font-semibold transition cursor-pointer mr-1">
+                                    <i class="fa-solid fa-pen"></i> Edit
+                                </button>
+                                <form method="POST" action="/?page=inventory" class="inline" onsubmit="return confirm('Delete this waste record and refund the quantity back to store stock?');">
+                                    @csrf
+                                    <input type="hidden" name="action" value="delete_inventory_waste">
+                                    <input type="hidden" name="waste_id" value="{{ (int)$wl['id'] }}">
+                                    <button type="submit" class="px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-700 dark:text-rose-300 border border-rose-500/30 text-[11px] font-sans font-semibold transition cursor-pointer">
+                                        <i class="fa-solid fa-trash"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="6" class="py-5 text-center font-sans text-slate-500 dark:text-slate-400">No store-level damaged or wasted stock recorded.</td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: LOG / EDIT STORE DAMAGED STOCK -->
+<div id="inventoryWasteModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md hidden opacity-0 transition-opacity duration-300">
+    <div id="inventoryWasteModalBox" class="glass-card max-w-md w-full rounded-3xl p-6 border border-rose-500/40 relative transform scale-95 transition-transform duration-300">
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-xl bg-rose-500/20 text-rose-500 flex items-center justify-center">
+                    <i class="fa-solid fa-trash-can-arrow-up"></i>
+                </div>
+                <div>
+                    <h3 id="wasteModalTitle" class="text-base font-bold text-slate-900 dark:text-white">Log Damaged / Wasted Stock</h3>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400">Subtracts from store stock and updates General Overhead.</p>
+                </div>
+            </div>
+            <button type="button" onclick="closeModal('inventoryWasteModal')" class="text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <form method="POST" action="/?page=inventory" class="space-y-3.5 text-xs">
+            @csrf
+            <input type="hidden" name="action" id="wasteFormAction" value="add_inventory_waste">
+            <input type="hidden" name="waste_id" id="wasteFormId" value="">
+
+            <div>
+                <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Select Store Stock Item</label>
+                <select name="inventory_item_id" id="wasteItemSelect" required
+                        class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs focus:border-rose-500 focus:outline-none">
+                    @foreach ($inventoryItems as $item)
+                        <option value="{{ $item['id'] }}">{{ $item['item_name'] }} ({{ \App\Core\FarmService::fmtQty((float)$item['total_quantity_g_or_ml']) }} {{ $item['unit_label'] }} left)</option>
+                    @endforeach
+                </select>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Damaged Quantity</label>
+                    <input type="number" step="any" min="0.0001" name="quantity_value" id="wasteQtyInput" placeholder="e.g. 2.5 or 500" required
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-rose-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Unit</label>
+                    <select name="input_unit_mode" id="wasteUnitSelect"
+                            class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs focus:border-rose-500 focus:outline-none">
+                        <option value="g">Grams (g)</option>
+                        <option value="kg">Kilograms (kg)</option>
+                        <option value="ml">Milliliters (ml)</option>
+                        <option value="l">Liters (L)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Date</label>
+                    <input type="date" name="waste_date" id="wasteDateInput" value="{{ date('Y-m-d') }}" required
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-rose-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Reason / Note</label>
+                    <input type="text" name="reason" id="wasteReasonInput" placeholder="e.g. Torn bag, Rain damage" required
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs focus:border-rose-500 focus:outline-none">
+                </div>
+            </div>
+
+            <div class="pt-2 flex items-center justify-end gap-2.5">
+                <button type="button" onclick="closeModal('inventoryWasteModal')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold cursor-pointer">
+                    Cancel
+                </button>
+                <button type="submit" id="wasteSubmitBtn" class="px-5 py-2 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-mono font-bold shadow-md cursor-pointer">
+                    Save Stock Waste
+                </button>
+            </div>
+        </form>
+    </div>
 </div>
 
 <!-- MODAL: EDIT INVENTORY ITEM -->
@@ -441,6 +579,49 @@ function openEditInventoryModal(itemId) {
     document.getElementById('editInvTotalCost').value = it.total_cost ?? 0;
     document.getElementById('editInvPurchaseDate').value = it.purchase_date || '';
     openModal('editInventoryItemModal');
+}
+
+window.invWasteEditMap = <?php
+$wEditMap = [];
+foreach ($inventoryWasteLogs ?? [] as $_wl) {
+    $wId = (int) ($_wl['id'] ?? 0);
+    $wEditMap[$wId] = [
+        'id' => $wId,
+        'inventory_item_id' => (int) ($_wl['inventory_item_id'] ?? 0),
+        'quantity_g_or_ml' => (float) ($_wl['quantity_g_or_ml'] ?? 0),
+        'unit_label' => $_wl['unit_label'] ?? 'g',
+        'waste_date' => $_wl['waste_date'] ?? date('Y-m-d'),
+        'reason' => $_wl['reason'] ?? '',
+    ];
+}
+echo json_encode($wEditMap, JSON_UNESCAPED_UNICODE);
+?>;
+
+function openAddWasteModal() {
+    document.getElementById('wasteModalTitle').textContent = 'Log Damaged / Wasted Stock';
+    document.getElementById('wasteFormAction').value = 'add_inventory_waste';
+    document.getElementById('wasteFormId').value = '';
+    document.getElementById('wasteQtyInput').value = '';
+    document.getElementById('wasteUnitSelect').value = 'g';
+    document.getElementById('wasteDateInput').value = '{{ date('Y-m-d') }}';
+    document.getElementById('wasteReasonInput').value = '';
+    document.getElementById('wasteSubmitBtn').textContent = 'Save Stock Waste';
+    openModal('inventoryWasteModal');
+}
+
+function openEditWasteModal(wasteId) {
+    const w = window.invWasteEditMap[String(wasteId)] || window.invWasteEditMap[wasteId];
+    if (!w) return;
+    document.getElementById('wasteModalTitle').textContent = 'Edit Damaged / Wasted Stock';
+    document.getElementById('wasteFormAction').value = 'update_inventory_waste';
+    document.getElementById('wasteFormId').value = w.id;
+    document.getElementById('wasteItemSelect').value = String(w.inventory_item_id || '');
+    document.getElementById('wasteQtyInput').value = w.quantity_g_or_ml ?? 0;
+    document.getElementById('wasteUnitSelect').value = (w.unit_label === 'ml') ? 'ml' : 'g';
+    document.getElementById('wasteDateInput').value = w.waste_date || '';
+    document.getElementById('wasteReasonInput').value = w.reason || '';
+    document.getElementById('wasteSubmitBtn').textContent = 'Update Stock Waste';
+    openModal('inventoryWasteModal');
 }
 </script>
 @endsection
