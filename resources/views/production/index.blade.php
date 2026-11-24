@@ -5,6 +5,9 @@
 @section('page_subheading', 'Fixed house rent overhead, age-based feed stage alerts, daily gram/ml consumption telemetry, and live cost-per-bird attribution.')
 
 @section('content')
+@php
+    $activeProductionBatches = array_values(array_filter($productionBatches ?? [], fn($pb) => (int)($pb['metrics']['current_in_house_birds'] ?? 0) > 0 && ($pb['status'] ?? 'Active') !== 'Completed'));
+@endphp
 <div class="space-y-6">
     <!-- Production Page Header Bar -->
     <div class="glass-card rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
@@ -28,9 +31,9 @@
     </div>
 
     <!-- Age-Based Feed Transition Alert Banners for Active Batches -->
-    @if (!empty($productionBatches))
+    @if (!empty($activeProductionBatches))
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        @foreach ($productionBatches as $pb)
+        @foreach ($activeProductionBatches as $pb)
             @php $alert = $pb['feed_alert']; @endphp
             <div class="glass-card rounded-2xl p-4 flex items-start gap-3.5 border {{ $alert['needs_transition'] ? 'border-amber-500/40 bg-amber-500/10' : 'border-emerald-500/35 bg-emerald-500/10' }}">
                 <div class="h-9 w-9 shrink-0 rounded-xl flex items-center justify-center font-bold text-sm shadow-sm {{ $alert['needs_transition'] ? 'bg-amber-500 text-slate-950' : 'bg-emerald-500 text-slate-950' }}">
@@ -62,9 +65,13 @@
                     <h2 class="text-sm font-bold text-slate-900 dark:text-white">Daily Batch Telemetry &amp; Consumption Form</h2>
                     <p class="text-xs text-slate-500 dark:text-slate-300">Logs mortality, deducts exact grams/ml from inventory, and recalculates Live Cost per Bird.</p>
                 </div>
-                <span class="text-[11px] font-mono px-2.5 py-0.5 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-bold">
-                    Auto-Ledger Attribution
-                </span>
+                <form method="POST" action="/?page=production" class="inline" onsubmit="return confirm('Auto-log today\'s age-rate feed &amp; 10L water for all active flocks not yet logged today?');">
+                    @csrf
+                    <input type="hidden" name="action" value="auto_log_daily_feed">
+                    <button type="submit" class="px-3 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-700 dark:text-cyan-300 border border-cyan-500/35 text-[11px] font-mono font-bold transition cursor-pointer flex items-center gap-1.5">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> Auto-Log Today's Feed &amp; 10L Water (All Flocks)
+                    </button>
+                </form>
             </div>
 
             <form method="POST" action="/?page=production" class="space-y-4">
@@ -74,10 +81,23 @@
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                     <div>
                         <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Production Batch</label>
-                        <select name="production_batch_id" required class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs focus:border-emerald-500 focus:outline-none">
-                            @foreach ($productionBatches as $pb)
-                                <option value="{{ $pb['id'] }}">{{ $pb['batch_code'] }} ({{ number_format($pb['metrics']['current_in_house_birds']) }} birds)</option>
-                            @endforeach
+                        <select name="production_batch_id" id="dailyLogBatchSelect" onchange="syncDailyLogSelectedBatch()" required class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs focus:border-emerald-500 focus:outline-none">
+                            @forelse ($activeProductionBatches as $pb)
+                                @php $bm = $pb['metrics']; @endphp
+                                <option value="{{ $pb['id'] }}"
+                                        data-available="{{ (int)$bm['current_in_house_birds'] }}"
+                                        data-age-days="{{ (int)$pb['age_days'] }}"
+                                        data-age-weeks="{{ (int)$pb['age_weeks'] }}"
+                                        data-rec-g-bird="{{ (float)($bm['recommended_feed_g_per_bird'] ?? 0) }}"
+                                        data-rec-grams="{{ (float)($bm['recommended_daily_feed_grams'] ?? 0) }}"
+                                        data-rec-cat="{{ $bm['recommended_feed_category'] ?? 'starter' }}"
+                                        data-actual-avg-bird="{{ (float)($bm['actual_avg_feed_g_per_bird'] ?? 0) }}"
+                                        data-feed-days="{{ (int)($bm['feed_logged_days'] ?? 0) }}">
+                                    {{ $pb['batch_code'] }} ({{ number_format($bm['current_in_house_birds']) }} available • Day {{ $pb['age_days'] }})
+                                </option>
+                            @empty
+                                <option value="">-- No Active Flocks Available --</option>
+                            @endforelse
                         </select>
                     </div>
                     <div>
@@ -87,8 +107,22 @@
                     </div>
                     <div>
                         <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Water Intake (Liters)</label>
-                        <input type="number" step="any" name="water_liters" value="350" min="0" required
+                        <input type="number" step="any" name="water_liters" value="10" min="0" required
                                class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-emerald-500 focus:outline-none">
+                    </div>
+                </div>
+
+                <!-- Selected Production Available Quantity & Age-Rate Feed Strip -->
+                <div id="selectedFlockLiveStrip" class="rounded-xl bg-emerald-500/10 border border-emerald-500/30 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
+                    <div class="flex flex-wrap items-center gap-3">
+                        <span class="text-emerald-700 dark:text-emerald-300 font-bold">
+                            <i class="fa-solid fa-kiwi-bird mr-1"></i>Available: <strong id="dailyLogAvailBirds">0</strong> live birds
+                        </span>
+                        <span class="text-slate-600 dark:text-slate-300" id="dailyLogFlockAge">Day —</span>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2 text-[11px]">
+                        <span class="text-cyan-700 dark:text-cyan-300 font-semibold" id="dailyLogRecFeedInfo">Age-Rate Feed: —</span>
+                        <span class="text-slate-500 dark:text-slate-400 hidden" id="dailyLogActualAvgInfo"></span>
                     </div>
                 </div>
 
@@ -106,7 +140,7 @@
                                 <option value="" data-rate="0">-- No Feed Logged --</option>
                                 @foreach ($inventoryItems as $item)
                                     @if (in_array($item['category'], ['starter', 'grower', 'layer'], true))
-                                        <option value="{{ $item['id'] }}" data-rate="{{ $item['unit_cost_per_g_or_ml'] }}">
+                                        <option value="{{ $item['id'] }}" data-rate="{{ $item['unit_cost_per_g_or_ml'] }}" data-cat="{{ $item['category'] }}" data-rem="{{ (float)$item['total_quantity_g_or_ml'] }}">
                                             [{{ strtoupper($item['category']) }}] {{ $item['item_name'] }} (₦{{ number_format((float)$item['unit_cost_per_g_or_ml'], 4) }}/g • {{ number_format((float)$item['total_quantity_g_or_ml']) }}g left)
                                         </option>
                                     @endif
@@ -251,16 +285,16 @@
     </div>
 
     <!-- Clickable Production Batch Cards (Select a batch to view all details & expenses) -->
-    @if (!empty($productionBatches))
+    @if (!empty($activeProductionBatches))
     <div class="space-y-3">
         <div class="flex items-center justify-between">
             <h3 class="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                Select a Production Batch to View Full Details &amp; Expenses
+                Select an Active Production Batch to View Full Details &amp; Expenses
             </h3>
-            <span class="text-[11px] font-mono text-slate-500 dark:text-slate-400">{{ count($productionBatches) }} Active Batch(es)</span>
+            <span class="text-[11px] font-mono text-slate-500 dark:text-slate-400">{{ count($activeProductionBatches) }} Active Batch(es)</span>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            @foreach ($productionBatches as $idx => $pb)
+            @foreach ($activeProductionBatches as $idx => $pb)
                 @php $m = $pb['metrics']; @endphp
                 <button type="button"
                         id="prodBatchCard-{{ $pb['id'] }}"
@@ -302,7 +336,7 @@
 
     <!-- Selected Batch Financial Attribution & Telemetry History -->
     <div id="prodBatchDetailContainer">
-    @forelse ($productionBatches as $idx => $pb)
+    @forelse ($activeProductionBatches as $idx => $pb)
         @php $m = $pb['metrics']; @endphp
         <div id="prodBatchDetail-{{ $pb['id'] }}" class="prod-batch-detail glass-card rounded-2xl overflow-hidden {{ $idx === 0 ? '' : 'hidden' }}">
             <div class="px-6 py-4 bg-slate-100/70 dark:bg-slate-900/60 border-b border-slate-200/80 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-4">
@@ -518,8 +552,8 @@
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Batch Code (Auto if blank)</label>
-                    <input type="text" name="batch_code" placeholder="e.g. PRD-{{ date('Y') }}-05"
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Batch / Product ID (Auto date-complete if blank)</label>
+                    <input type="text" name="batch_code" placeholder="e.g. PRD-{{ date('Y-m-d') }}-01"
                            class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-emerald-500 focus:outline-none">
                 </div>
                 <div>
@@ -630,8 +664,65 @@ function selectProductionBatch(batchId) {
     const formSelect = document.querySelector('form[action="/?page=production"] select[name="production_batch_id"]');
     if (formSelect) {
         formSelect.value = String(batchId);
+        if (typeof syncDailyLogSelectedBatch === 'function') syncDailyLogSelectedBatch();
     }
 }
+
+function syncDailyLogSelectedBatch() {
+    const sel = document.getElementById('dailyLogBatchSelect');
+    if (!sel || !sel.selectedOptions || !sel.selectedOptions.length) return;
+    const opt = sel.selectedOptions[0];
+    const avail = parseInt(opt.dataset.available || '0', 10) || 0;
+    const ageDays = parseInt(opt.dataset.ageDays || '0', 10) || 0;
+    const ageWeeks = parseInt(opt.dataset.ageWeeks || '0', 10) || 0;
+    const recGBird = parseFloat(opt.dataset.recGBird || '0') || 0;
+    const recGrams = parseFloat(opt.dataset.recGrams || '0') || 0;
+    const recCat = opt.dataset.recCat || 'starter';
+    const actualAvgBird = parseFloat(opt.dataset.actualAvgBird || '0') || 0;
+    const feedDays = parseInt(opt.dataset.feedDays || '0', 10) || 0;
+
+    const availEl = document.getElementById('dailyLogAvailBirds');
+    const ageEl = document.getElementById('dailyLogFlockAge');
+    const recEl = document.getElementById('dailyLogRecFeedInfo');
+    const avgEl = document.getElementById('dailyLogActualAvgInfo');
+
+    if (availEl) availEl.textContent = avail.toLocaleString();
+    if (ageEl) ageEl.textContent = ageDays > 0 ? `Day ${ageDays} (Wk ${ageWeeks}) • ${recCat.toUpperCase()}` : 'No active flock';
+    if (recEl) recEl.textContent = recGrams > 0 ? `Age Rate: ${recGBird}g/bird → ${recGrams.toLocaleString()}g (${(recGrams/1000).toFixed(2)}kg)` : 'Age Rate: —';
+    if (avgEl) {
+        if (feedDays > 0 && actualAvgBird > 0) {
+            avgEl.textContent = `• Farm Avg: ${actualAvgBird}g/bird (${feedDays}d)`;
+            avgEl.classList.remove('hidden');
+        } else {
+            avgEl.classList.add('hidden');
+        }
+    }
+
+    const feedInput = document.getElementById('prodFeedGrams');
+    if (feedInput && recGrams > 0) {
+        feedInput.value = recGrams;
+    }
+
+    const feedSel = document.getElementById('prodFeedSelect');
+    if (feedSel) {
+        let matchedVal = '';
+        let fallbackVal = '';
+        Array.from(feedSel.options).forEach((o) => {
+            if (!o.value) return;
+            const rem = parseFloat(o.dataset.rem || '0') || 0;
+            if (rem <= 0) return;
+            if (o.dataset.cat === recCat && !matchedVal) matchedVal = o.value;
+            if (!fallbackVal) fallbackVal = o.value;
+        });
+        if (matchedVal || fallbackVal) {
+            feedSel.value = matchedVal || fallbackVal;
+        }
+    }
+    if (typeof updateDailyTelemetryCostPreview === 'function') {
+        updateDailyTelemetryCostPreview();
+    }
+}
+setTimeout(() => { if (typeof syncDailyLogSelectedBatch === 'function') syncDailyLogSelectedBatch(); }, 0);
 
 function fmtCurrency(n) {
     return '₦' + Number(n || 0).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

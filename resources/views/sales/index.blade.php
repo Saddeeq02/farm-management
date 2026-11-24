@@ -5,6 +5,9 @@
 @section('page_subheading', 'Configure target profit margins per batch, compute exact recommended selling prices, and record commercial bird sales.')
 
 @section('content')
+@php
+    $activeSalesBatches = array_values(array_filter($productionBatches ?? [], fn($pb) => (int)($pb['metrics']['current_in_house_birds'] ?? 0) > 0 && ($pb['status'] ?? 'Active') !== 'Completed'));
+@endphp
 <div class="space-y-6">
     <!-- Sales Command Header Bar -->
     <div class="glass-card rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
@@ -22,9 +25,9 @@
         </a>
     </div>
 
-    <!-- Batch Pricing & Target Margin Cards -->
+    <!-- Batch Pricing & Target Margin Cards (Active / Available Stock Only) -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        @foreach ($productionBatches as $pb)
+        @forelse ($activeSalesBatches as $pb)
             @php $m = $pb['metrics']; @endphp
             <div class="glass-card rounded-2xl overflow-hidden flex flex-col justify-between">
                 <div>
@@ -129,7 +132,12 @@
                     </div>
                 </div>
             </div>
-        @endforeach
+        @empty
+            <div class="lg:col-span-2 glass-card rounded-2xl p-8 text-center">
+                <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">No active flocks currently available for sale.</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Sold-out batches are automatically removed from the active catalog; all historical sales receipts remain in the ledger below.</p>
+            </div>
+        @endforelse
     </div>
 
     <!-- Lower Section: Record Commercial Sale Form + Sales & Depletion Ledger -->
@@ -144,16 +152,7 @@
                 <input type="hidden" name="action" value="record_batch_sale">
 
                 @php
-                    $defaultSaleBatch = null;
-                    foreach ($productionBatches as $_spb) {
-                        if ((int)($_spb['metrics']['current_in_house_birds'] ?? 0) > 0) {
-                            $defaultSaleBatch = $_spb;
-                            break;
-                        }
-                    }
-                    if ($defaultSaleBatch === null && !empty($productionBatches)) {
-                        $defaultSaleBatch = $productionBatches[0];
-                    }
+                    $defaultSaleBatch = $activeSalesBatches[0] ?? null;
                     $defaultSaleBatchId = (int)($defaultSaleBatch['id'] ?? 0);
                     $defaultAvailBirds = (int)($defaultSaleBatch['metrics']['current_in_house_birds'] ?? 0);
                     $defaultRecPrice = (float)($defaultSaleBatch['metrics']['recommended_selling_price'] ?? 1700);
@@ -163,16 +162,17 @@
                     <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Production Batch</label>
                     <select name="production_batch_id" id="saleBatchSelect" onchange="syncRecommendedPriceToSale()" required
                             class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs sm:text-sm focus:border-emerald-500 focus:outline-none">
-                        @foreach ($productionBatches as $pb)
+                        @forelse ($activeSalesBatches as $pb)
                             @php $avail = (int)($pb['metrics']['current_in_house_birds'] ?? 0); @endphp
                             <option value="{{ $pb['id'] }}"
                                     data-rec-price="{{ $pb['metrics']['recommended_selling_price'] }}"
                                     data-available="{{ $avail }}"
-                                    {{ (int)$pb['id'] === $defaultSaleBatchId ? 'selected' : '' }}
-                                    {{ $avail <= 0 ? 'disabled' : '' }}>
-                                {{ $pb['batch_code'] }} ({{ number_format($avail) }} available{{ $avail <= 0 ? ' — Sold Out' : '' }} • Rec: ₦{{ number_format($pb['metrics']['recommended_selling_price'], 2) }})
+                                    {{ (int)$pb['id'] === $defaultSaleBatchId ? 'selected' : '' }}>
+                                {{ $pb['batch_code'] }} ({{ number_format($avail) }} available • Rec: ₦{{ number_format($pb['metrics']['recommended_selling_price'], 2) }})
                             </option>
-                        @endforeach
+                        @empty
+                            <option value="" disabled selected>-- No Available Flocks (All Sold Out) --</option>
+                        @endforelse
                     </select>
                 </div>
 

@@ -448,6 +448,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: /?page=inventory');
                 exit;
 
+            case 'auto_log_daily_feed':
+                $res = $farm->autoLogDailyFeedForActiveFlocks($_POST['log_date'] ?? null);
+                if ($res['logged'] > 0) {
+                    $setFlash('flash_success', "Auto-logged daily age-rate feed & 10L water for {$res['logged']} active flock(s) (" . implode(', ', $res['batches']) . ")" . ($res['skipped'] > 0 ? "; skipped {$res['skipped']} already logged today." : '.'));
+                } else {
+                    $setFlash('flash_success', $res['skipped'] > 0 ? "All {$res['skipped']} active flock(s) already have telemetry logged for {$res['date']}." : 'No active flocks available to auto-log.');
+                }
+                header('Location: /?page=production');
+                exit;
+
             case 'update_inventory_waste':
                 $farm->updateInventoryWaste((int) ($_POST['waste_id'] ?? 0), $_POST);
                 $setFlash('flash_success', 'Stock waste record updated and inventory balance resynced.');

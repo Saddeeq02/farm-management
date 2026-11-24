@@ -356,6 +356,9 @@ class FarmService
             $totalLaborCost = 0.0;
             $totalSanitationCost = 0.0;
             $totalWaterOtherCost = 0.0;
+            $feedLoggedDays = 0;
+            $loggedToday = false;
+            $todayDate = date('Y-m-d');
             $lastFeedCategory = null;
 
             foreach ($batchLogs as $idx => $log) {
@@ -367,7 +370,14 @@ class FarmService
                 $totalWaterLiters += (float) $log['water_liters'];
                 $logWastedFeedGrams = (float) ($log['wasted_feed_grams'] ?? 0);
                 $logWastedFeedCost = (float) ($log['wasted_feed_cost'] ?? 0);
-                $totalFeedGrams += (float) $log['feed_grams'];
+                $logFeedGrams = (float) $log['feed_grams'];
+                if ($logFeedGrams > 0) {
+                    $feedLoggedDays++;
+                }
+                if (($log['log_date'] ?? '') === $todayDate) {
+                    $loggedToday = true;
+                }
+                $totalFeedGrams += $logFeedGrams;
                 $totalWastedFeedGrams += $logWastedFeedGrams;
                 $totalWastedFeedCost += $logWastedFeedCost;
                 $totalFeedCost += (float) $log['feed_cost_calculated'] + $logWastedFeedCost;
@@ -481,6 +491,9 @@ class FarmService
             $ageWeeks = (int) ceil($ageDays / 7);
 
             $feedAlert = $this->computeFeedTransitionAlert($ageDays, $ageWeeks, $lastFeedCategory);
+            $recFeed = $this->computeRecommendedDailyFeed((string) ($batch['flock_type'] ?? ''), $ageDays, $currentInHouseBirds);
+            $actualAvgFeedPerDay = $feedLoggedDays > 0 ? round($totalFeedGrams / $feedLoggedDays, 2) : 0.0;
+            $actualAvgFeedPerBird = ($feedLoggedDays > 0 && $currentInHouseBirds > 0) ? round($actualAvgFeedPerDay / $currentInHouseBirds, 2) : 0.0;
 
             $incBatchId = isset($batch['incubation_batch_id']) ? (int) $batch['incubation_batch_id'] : 0;
             $originIncBatch = $incBatchId > 0 ? ($incMap[$incBatchId] ?? null) : null;
@@ -513,6 +526,14 @@ class FarmService
                 'total_wasted_feed_kg' => round($totalWastedFeedGrams / 1000, 4),
                 'total_wasted_feed_cost' => round($totalWastedFeedCost, 2),
                 'total_feed_cost' => $totalFeedCost,
+                'recommended_feed_g_per_bird' => $recFeed['g_per_bird'],
+                'recommended_daily_feed_grams' => $recFeed['total_grams'],
+                'recommended_daily_feed_kg' => $recFeed['total_kg'],
+                'recommended_feed_category' => $recFeed['recommended_category'],
+                'actual_avg_feed_grams_per_day' => $actualAvgFeedPerDay,
+                'actual_avg_feed_g_per_bird' => $actualAvgFeedPerBird,
+                'feed_logged_days' => $feedLoggedDays,
+                'logged_today' => $loggedToday,
                 'total_med_dose' => $totalMedDose,
                 'total_med_cost' => $totalMedCost,
                 'total_labor_cost' => $totalLaborCost,
@@ -551,6 +572,137 @@ class FarmService
 
         usort($enriched, fn($a, $b) => (int) $b['id'] <=> (int) $a['id']);
         return $this->setMemo('prod', $enriched);
+    }
+
+    private function generateDateBatchCode(string $prefix, ?string $dateStr = null): string
+    {
+        $datePart = (!empty($dateStr) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateStr))
+            ? $dateStr
+            : date('Y-m-d');
+        $basePrefix = $prefix . '-' . $datePart . '-';
+        $seq = 1;
+        foreach ($this->db->getTable('production_batches') as $pb) {
+            $code = (string) ($pb['batch_code'] ?? '');
+            if (str_starts_with($code, $basePrefix)) {
+                $suffix = (int) substr($code, strlen($basePrefix));
+                if ($suffix >= $seq) {
+                    $seq = $suffix + 1;
+                }
+            }
+        }
+        return sprintf('%s%02d', $basePrefix, $seq);
+    }
+
+    /**
+     * Standard poultry daily feed intake (g/bird/day) by breed/species & age day.
+     */
+    public function computeRecommendedDailyFeed(string $flockType, int $ageDays, int $liveBirds): array
+    {
+        $type = strtolower($flockType);
+        $week = max(1, (int) ceil(max(1, $ageDays) / 7));
+
+        if (str_contains($type, 'turkey')) {
+            $gPerBird = $week <= 2 ? 25.0 : ($week <= 4 ? 60.0 : ($week <= 8 ? 120.0 : 220.0));
+        } elseif (str_contains($type, 'layer') || str_contains($type, 'pullet') || str_contains($type, 'isa')) {
+            $gPerBird = $week <= 2 ? 16.0 : ($week <= 4 ? 30.0 : ($week <= 8 ? 50.0 : ($week <= 16 ? 75.0 : 115.0)));
+        } elseif (str_contains($type, 'noiler') || str_contains($type, 'cockerel') || str_contains($type, 'local') || str_contains($type, 'guinea')) {
+            $gPerBird = $week === 1 ? 15.0 : ($week === 2 ? 28.0 : ($week === 3 ? 42.0 : ($week === 4 ? 55.0 : ($week <= 6 ? 70.0 : ($week <= 10 ? 90.0 : 110.0)))));
+        } else {
+            // Broiler default curve
+            $gPerBird = $week === 1 ? 20.0 : ($week === 2 ? 45.0 : ($week === 3 ? 75.0 : ($week === 4 ? 110.0 : ($week === 5 ? 140.0 : 165.0))));
+        }
+
+        $totalGrams = round(max(0, $liveBirds) * $gPerBird, 2);
+        $recCat = $ageDays <= 21 ? 'starter' : ($ageDays <= 42 ? 'grower' : 'layer');
+
+        return [
+            'g_per_bird' => $gPerBird,
+            'total_grams' => $totalGrams,
+            'total_kg' => round($totalGrams / 1000.0, 3),
+            'recommended_category' => $recCat,
+        ];
+    }
+
+    /**
+     * One-click Auto-Log: logs age-based daily feed + 10L water for every active flock not yet logged on $logDate.
+     */
+    public function autoLogDailyFeedForActiveFlocks(?string $logDate = null): array
+    {
+        $targetDate = (!empty($logDate) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $logDate))
+            ? $logDate
+            : date('Y-m-d');
+
+        $batches = $this->getProductionBatchesEnriched();
+        $logged = 0;
+        $skipped = 0;
+        $loggedCodes = [];
+
+        foreach ($batches as $pb) {
+            $m = $pb['metrics'] ?? [];
+            $liveBirds = (int) ($m['current_in_house_birds'] ?? 0);
+            if ($liveBirds <= 0 || ($pb['status'] ?? 'Active') === 'Completed') {
+                continue;
+            }
+
+            // Skip if already logged on targetDate
+            $alreadyLogged = false;
+            foreach ($pb['logs'] ?? [] as $lg) {
+                if (($lg['log_date'] ?? '') === $targetDate) {
+                    $alreadyLogged = true;
+                    break;
+                }
+            }
+            if ($alreadyLogged) {
+                $skipped++;
+                continue;
+            }
+
+            $recCat = (string) ($m['recommended_feed_category'] ?? 'starter');
+            $recGrams = (float) ($m['recommended_daily_feed_grams'] ?? 0);
+
+            // Pick matching available feed item from Inventory (fresh read each iteration so remaining qty stays exact)
+            $feedItem = null;
+            $fallbackFeed = null;
+            foreach ($this->db->getTable('inventory_items') as $it) {
+                $cat = (string) ($it['category'] ?? '');
+                $rem = (float) ($it['total_quantity_g_or_ml'] ?? 0);
+                if (!in_array($cat, ['starter', 'grower', 'layer'], true) || $rem <= 0) {
+                    continue;
+                }
+                if ($cat === $recCat && ($feedItem === null || $rem > (float) $feedItem['total_quantity_g_or_ml'])) {
+                    $feedItem = $it;
+                }
+                if ($fallbackFeed === null || $rem > (float) $fallbackFeed['total_quantity_g_or_ml']) {
+                    $fallbackFeed = $it;
+                }
+            }
+            $chosenFeed = $feedItem ?? $fallbackFeed;
+            $feedItemId = $chosenFeed ? (int) $chosenFeed['id'] : null;
+            $gramsToLog = $chosenFeed ? round(min($recGrams, (float) $chosenFeed['total_quantity_g_or_ml']), 2) : 0.0;
+
+            $this->addProductionDailyLog([
+                'production_batch_id' => (int) $pb['id'],
+                'log_date' => $targetDate,
+                'mortality_count' => 0,
+                'water_liters' => 10.0,
+                'feed_item_id' => $feedItemId,
+                'feed_grams' => $gramsToLog,
+                'wasted_feed_grams' => 0.0,
+                'labor_cost' => 0.0,
+                'sanitation_cost' => 0.0,
+                'water_other_cost' => 0.0,
+                'notes' => 'Auto-logged (' . (float) ($m['recommended_feed_g_per_bird'] ?? 0) . 'g/bird × ' . $liveBirds . ' birds • Day ' . (int) ($pb['age_days'] ?? 1) . ' • 10L water)',
+            ]);
+            $logged++;
+            $loggedCodes[] = (string) $pb['batch_code'];
+        }
+
+        return [
+            'logged' => $logged,
+            'skipped' => $skipped,
+            'batches' => $loggedCodes,
+            'date' => $targetDate,
+        ];
     }
 
     private function computeFeedTransitionAlert(int $ageDays, int $ageWeeks, ?string $lastFeedCategory): array
@@ -878,10 +1030,9 @@ class FarmService
             : $target['metrics']['viable_eggs_remaining']);
         $accumulatedCost = (float) $target['metrics']['total_incubation_cost'];
 
-        $prodCount = count($this->db->getTable('production_batches')) + 1;
         $prodCode = !empty($options['batch_code'])
             ? trim((string) $options['batch_code'])
-            : sprintf('PRD-%s-%02d', date('Y'), $prodCount);
+            : $this->generateDateBatchCode('PRD', date('Y-m-d'));
 
         $houseRent = isset($options['house_rent_total']) && $options['house_rent_total'] !== ''
             ? max(0.0, (float) $options['house_rent_total'])
@@ -979,10 +1130,10 @@ class FarmService
      */
     public function createProductionBatch(array $input): int
     {
-        $count = count($this->db->getTable('production_batches')) + 1;
+        $startDate = !empty($input['start_date']) ? (string) $input['start_date'] : date('Y-m-d');
         $batchCode = trim((string) ($input['batch_code'] ?? ''));
         if ($batchCode === '') {
-            $batchCode = sprintf('PRD-%s-%02d', date('Y'), $count);
+            $batchCode = $this->generateDateBatchCode('PRD', $startDate);
         }
 
         $birds = max(1, (int) ($input['initial_bird_count'] ?? 1000));
