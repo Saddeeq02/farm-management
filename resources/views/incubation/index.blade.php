@@ -423,10 +423,19 @@
 
 <!-- DEDICATED POPUP MODAL: ADD NEW EGGS BATCH -->
 @php
-    $nextBatchNum = sprintf('INC-%s-%02d', date('Y'), count($incubationBatches) + 1);
+    $todayPrefix = 'INC-' . date('Y-m-d') . '-';
+    $todaySeq = 1;
+    foreach ($incubationBatches ?? [] as $_ibc) {
+        $c = (string) ($_ibc['batch_code'] ?? '');
+        if (str_starts_with($c, $todayPrefix)) {
+            $n = (int) substr($c, strlen($todayPrefix));
+            if ($n >= $todaySeq) $todaySeq = $n + 1;
+        }
+    }
+    $nextBatchNum = sprintf('%s%02d', $todayPrefix, $todaySeq);
 @endphp
 <div id="addEggsModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm opacity-0 transition-opacity duration-200">
-    <div id="addEggsModalBox" class="glass-card rounded-3xl w-full max-w-md p-6 shadow-2xl border border-emerald-500/40 transform scale-95 transition-transform duration-200">
+    <div id="addEggsModalBox" class="glass-card rounded-3xl w-full max-w-md max-h-[90vh] overflow-y-auto p-6 shadow-2xl border border-emerald-500/40 transform scale-95 transition-transform duration-200">
         <div class="flex items-center justify-between pb-3 mb-4 border-b border-slate-200/20 dark:border-slate-800">
             <div class="flex items-center gap-2.5">
                 <div class="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
@@ -447,9 +456,9 @@
             <input type="hidden" name="action" value="create_incubation_batch">
             <div class="grid grid-cols-2 gap-3">
                 <div>
-                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Auto Batch Number</label>
-                    <input type="text" name="batch_code" value="{{ $nextBatchNum }}" readonly
-                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100/90 dark:bg-slate-900/90 text-emerald-600 dark:text-emerald-400 px-3 py-2 text-xs font-mono font-bold cursor-not-allowed focus:outline-none">
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Batch Number (Auto date-complete)</label>
+                    <input type="text" name="batch_code" value="{{ $nextBatchNum }}" placeholder="e.g. {{ $nextBatchNum }}"
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-emerald-600 dark:text-emerald-400 px-3 py-2 text-xs font-mono font-bold focus:border-emerald-500 focus:outline-none">
                 </div>
                 <div>
                     <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Intake Date</label>
@@ -528,13 +537,13 @@
 
             <div class="grid grid-cols-2 gap-3">
                 <div>
-                    <label class="block text-[11px] font-medium text-amber-600 dark:text-amber-300 mb-1">First Gas Intake (kg)</label>
-                    <input type="number" step="any" name="initial_gas_kg" placeholder="25.0" min="0" required
+                    <label class="block text-[11px] font-medium text-amber-600 dark:text-amber-300 mb-1">First Gas Intake (kg, Optional)</label>
+                    <input type="number" step="any" name="initial_gas_kg" placeholder="0" value="0" min="0"
                            class="w-full rounded-xl border border-amber-500/40 bg-amber-500/10 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-amber-400 focus:outline-none">
                 </div>
                 <div>
-                    <label class="block text-[11px] font-medium text-amber-600 dark:text-amber-300 mb-1">First Gas Price (₦)</label>
-                    <input type="number" step="0.01" name="initial_gas_cost" placeholder="32500" min="0" required
+                    <label class="block text-[11px] font-medium text-amber-600 dark:text-amber-300 mb-1">First Gas Price (₦, Optional)</label>
+                    <input type="number" step="0.01" name="initial_gas_cost" placeholder="0" value="0" min="0"
                            class="w-full rounded-xl border border-amber-500/40 bg-amber-500/10 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-amber-400 focus:outline-none">
                 </div>
             </div>
@@ -552,12 +561,12 @@
 </div>
 
 <script>
-const speciesTargets = @json(\App\Core\VeterinaryKnowledgeBase::getIncubationSpeciesProfiles());
+window.speciesTargets = @json(\App\Core\VeterinaryKnowledgeBase::getIncubationSpeciesProfiles());
 
 function updateSpeciesTargetPreview(speciesKey) {
     const hint = document.getElementById('speciesTargetHint');
-    if (!hint || !speciesTargets[speciesKey]) return;
-    const p = speciesTargets[speciesKey];
+    if (!hint || !window.speciesTargets || !window.speciesTargets[speciesKey]) return;
+    const p = window.speciesTargets[speciesKey];
     hint.innerText = `Setter (${p.setter_days}d): ${p.setter_temp_c} • ${p.setter_humidity} | Transfer Day ${p.transfer_day} → Hatcher (${p.hatcher_days}d): ${p.hatcher_humidity}`;
 }
 

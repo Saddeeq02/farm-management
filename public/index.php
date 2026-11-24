@@ -198,32 +198,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         switch ($action) {
             case 'create_incubation_batch':
                 $farm->createIncubationBatch($_POST);
-                $_SESSION['flash_success'] = 'New incubation batch loaded into setter successfully.';
+                $setFlash('flash_success', 'New incubation batch loaded into setter successfully.');
                 header('Location: /?page=incubation');
                 exit;
 
             case 'add_incubation_expense':
                 $farm->addIncubationExpense($_POST);
-                $_SESSION['flash_success'] = 'Batch-linked operational expense recorded and added to chick cost base.';
+                $setFlash('flash_success', 'Batch-linked operational expense recorded and added to chick cost base.');
                 header('Location: /?page=incubation');
                 exit;
 
             case 'add_candling_log':
                 $farm->addCandlingLog($_POST);
-                $_SESSION['flash_success'] = 'Candling inspection logged and fertility metrics updated.';
+                $setFlash('flash_success', 'Candling inspection logged and fertility metrics updated.');
                 header('Location: /?page=incubation');
                 exit;
 
             case 'record_hatch_breakout':
                 $farm->recordHatchBreakout($_POST);
-                $_SESSION['flash_success'] = 'Final hatch breakout recorded. Fertility %, Hatchability %, and Initial Cost per Chick computed.';
+                $setFlash('flash_success', 'Final hatch breakout recorded. Fertility %, Hatchability %, and Initial Cost per Chick computed.');
                 header('Location: /?page=incubation');
                 exit;
 
             case 'push_to_production':
                 $incId = (int) ($_POST['incubation_batch_id'] ?? 0);
                 $farm->pushIncubationToProduction($incId, $_POST);
-                $_SESSION['flash_success'] = 'Incubation batch transitioned to Flock Production! Live hatchlings and accumulated incubation cost carried over.';
+                $setFlash('flash_success', 'Incubation batch transitioned to Flock Production! Live hatchlings and accumulated incubation cost carried over.');
                 header('Location: /?page=production');
                 exit;
 
@@ -232,13 +232,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     (int) ($_POST['incubation_batch_id'] ?? 0),
                     (float) ($_POST['payment_amount'] ?? 0)
                 );
-                $_SESSION['flash_success'] = 'Client hatching service payment recorded.';
+                $setFlash('flash_success', 'Client hatching service payment recorded.');
                 header('Location: /?page=incubation');
                 exit;
 
             case 'mark_incubation_collected':
                 $farm->markIncubationCollected((int) ($_POST['incubation_batch_id'] ?? 0));
-                $_SESSION['flash_success'] = 'Client chicks marked as collected and batch archived.';
+                $setFlash('flash_success', 'Client chicks marked as collected and batch archived.');
                 header('Location: /?page=incubation');
                 exit;
 

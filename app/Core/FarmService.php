@@ -938,10 +938,22 @@ class FarmService
 
     public function createIncubationBatch(array $input): int
     {
+        $startDate = !empty($input['start_date']) ? (string) $input['start_date'] : date('Y-m-d');
         $batchCode = trim((string) ($input['batch_code'] ?? ''));
         if ($batchCode === '') {
-            $count = count($this->db->getTable('incubation_batches')) + 1;
-            $batchCode = sprintf('INC-%s-%02d', date('Y'), $count);
+            $datePart = preg_match('/^\d{4}-\d{2}-\d{2}$/', $startDate) ? $startDate : date('Y-m-d');
+            $basePrefix = 'INC-' . $datePart . '-';
+            $seq = 1;
+            foreach ($this->db->getTable('incubation_batches') as $ib) {
+                $c = (string) ($ib['batch_code'] ?? '');
+                if (str_starts_with($c, $basePrefix)) {
+                    $s = (int) substr($c, strlen($basePrefix));
+                    if ($s >= $seq) {
+                        $seq = $s + 1;
+                    }
+                }
+            }
+            $batchCode = sprintf('%s%02d', $basePrefix, $seq);
         }
 
         $profiles = VeterinaryKnowledgeBase::getIncubationSpeciesProfiles();
@@ -949,7 +961,6 @@ class FarmService
         if (!isset($profiles[$species])) {
             $species = 'chicken';
         }
-        $startDate = !empty($input['start_date']) ? (string) $input['start_date'] : date('Y-m-d');
         $parentInfo = trim((string) ($input['parent_flock_info'] ?? ''));
         if ($parentInfo === '') {
             $parentInfo = $profiles[$species]['label'] . ' Intake';
