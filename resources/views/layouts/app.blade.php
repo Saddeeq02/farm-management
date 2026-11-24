@@ -640,7 +640,10 @@
   <!-- MODAL 2: LOG DAILY PRODUCTION TELEMETRY -->
   <div id="dailyLogModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md hidden opacity-0 transition-opacity duration-300">
     <div class="glass-card max-w-lg w-full max-h-[90vh] overflow-y-auto rounded-3xl p-6 sm:p-8 border border-amber-500/40 relative transform scale-95 transition-transform duration-300" id="dailyLogModalBox">
-      <div class="flex items-center justify-between mb-4">
+      @php
+        $globalActiveProdBatches = array_values(array_filter($productionBatches ?? [], fn($pb) => (int)($pb['metrics']['current_in_house_birds'] ?? 0) > 0 && ($pb['status'] ?? 'Active') !== 'Completed'));
+      @endphp
+      <div class="flex items-center justify-between mb-3">
         <div class="flex items-center gap-2">
           <div class="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center">
             <i class="fa-solid fa-pen-to-square"></i>
@@ -650,27 +653,64 @@
         <button onclick="closeModal('dailyLogModal')" class="text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer"><i class="fa-solid fa-xmark text-lg"></i></button>
       </div>
 
+      <!-- One-Click Auto-Log All Active Flocks -->
+      <form method="POST" action="/?page=production" class="mb-4" onsubmit="return confirm('Auto-log today\'s age-rate feed &amp; 10L water for all active flocks not yet logged today?');">
+        @csrf
+        <input type="hidden" name="action" value="auto_log_daily_feed">
+        <button type="submit" class="w-full py-2 px-3 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-700 dark:text-cyan-300 border border-cyan-500/35 text-[11px] font-mono font-bold transition cursor-pointer flex items-center justify-center gap-1.5">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+          <span>Auto-Log Today's Age-Rate Feed &amp; 10L Water (All Active Flocks)</span>
+        </button>
+      </form>
+
       <form method="POST" action="/?page=production" class="space-y-4 text-xs font-mono">
         @csrf
         <input type="hidden" name="action" value="add_production_daily_log">
         
         <div>
           <label class="block text-slate-700 dark:text-slate-300 mb-1">Production Flock</label>
-          <select name="production_batch_id" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white outline-none focus:border-emerald-500">
-            @foreach ($productionBatches as $pb)
-              <option value="{{ $pb['id'] }}">{{ $pb['batch_code'] }} ({{ $pb['flock_type'] }} - Day {{ $pb['age_days'] }})</option>
-            @endforeach
+          <select name="production_batch_id" id="globalDailyBatchSelect" onchange="syncGlobalDailyLogModal()" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white outline-none focus:border-emerald-500">
+            @forelse ($globalActiveProdBatches as $pb)
+              @php $gm = $pb['metrics'] ?? []; @endphp
+              <option value="{{ $pb['id'] }}"
+                      data-available="{{ (int)($gm['current_in_house_birds'] ?? 0) }}"
+                      data-age-days="{{ (int)($pb['age_days'] ?? 1) }}"
+                      data-age-weeks="{{ (int)($pb['age_weeks'] ?? 1) }}"
+                      data-rec-g-bird="{{ (float)($gm['recommended_feed_g_per_bird'] ?? 0) }}"
+                      data-rec-grams="{{ (float)($gm['recommended_daily_feed_grams'] ?? 0) }}"
+                      data-rec-cat="{{ $gm['recommended_feed_category'] ?? 'starter' }}"
+                      data-actual-avg-bird="{{ (float)($gm['actual_avg_feed_g_per_bird'] ?? 0) }}"
+                      data-feed-days="{{ (int)($gm['feed_logged_days'] ?? 0) }}">
+                {{ $pb['batch_code'] }} ({{ $pb['flock_type'] }} • {{ number_format((int)($gm['current_in_house_birds'] ?? 0)) }} available • Day {{ $pb['age_days'] }})
+              </option>
+            @empty
+              <option value="">-- No Active Flocks Available --</option>
+            @endforelse
           </select>
+        </div>
+
+        <!-- Live Available Quantity & Age-Rate Feed Strip -->
+        <div class="rounded-xl bg-emerald-500/10 border border-emerald-500/30 px-3 py-2 flex flex-wrap items-center justify-between gap-1.5 text-[11px]">
+          <div class="flex items-center gap-2">
+            <span class="text-emerald-700 dark:text-emerald-300 font-bold">
+              <i class="fa-solid fa-kiwi-bird mr-1"></i>Available: <strong id="globalDailyAvailBirds">0</strong> birds
+            </span>
+            <span class="text-slate-500 dark:text-slate-400" id="globalDailyFlockAge">Day —</span>
+          </div>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <span class="text-cyan-700 dark:text-cyan-300 font-semibold" id="globalDailyRecFeed">Auto Feed: —</span>
+            <span class="text-slate-500 dark:text-slate-400 hidden" id="globalDailyFarmAvg"></span>
+          </div>
         </div>
 
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block text-slate-700 dark:text-slate-300 mb-1">Mortality Count Today</label>
-            <input type="number" name="mortality_count" placeholder="e.g. 4" min="0" value="0" required class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-rose-600 dark:text-rose-400 font-bold outline-none focus:border-rose-500">
+            <input type="number" name="mortality_count" placeholder="e.g. 0" min="0" value="0" required class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-rose-600 dark:text-rose-400 font-bold outline-none focus:border-rose-500">
           </div>
           <div>
             <label class="block text-slate-700 dark:text-slate-300 mb-1">Water Intake (Liters)</label>
-            <input type="number" step="any" min="0" name="water_liters" placeholder="e.g. 350" value="350" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-cyan-600 dark:text-cyan-400 font-bold outline-none focus:border-cyan-500">
+            <input type="number" step="any" min="0" name="water_liters" placeholder="e.g. 10" value="10" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-cyan-600 dark:text-cyan-400 font-bold outline-none focus:border-cyan-500">
           </div>
         </div>
 
@@ -685,21 +725,27 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-3">
+        <div class="space-y-2.5">
           <div>
             <label class="block text-slate-700 dark:text-slate-300 mb-1">Feed Item in Store</label>
-            <select name="feed_item_id" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white outline-none focus:border-emerald-500">
+            <select name="feed_item_id" id="globalDailyFeedSelect" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white outline-none focus:border-emerald-500">
               <option value="">-- No Feed Logged --</option>
               @foreach ($inventoryItems as $item)
                 @if (in_array($item['category'], ['starter', 'grower', 'layer'], true))
-                  <option value="{{ $item['id'] }}">[{{ strtoupper($item['category']) }}] {{ $item['item_name'] }} (₦{{ number_format((float)$item['unit_cost_per_g_or_ml'], 4) }}/g • {{ number_format((float)$item['total_quantity_g_or_ml']) }}g left)</option>
+                  <option value="{{ $item['id'] }}" data-cat="{{ $item['category'] }}" data-rem="{{ (float)$item['total_quantity_g_or_ml'] }}">[{{ strtoupper($item['category']) }}] {{ $item['item_name'] }} (₦{{ number_format((float)$item['unit_cost_per_g_or_ml'], 4) }}/g • {{ number_format((float)$item['total_quantity_g_or_ml']) }}g left)</option>
                 @endif
               @endforeach
             </select>
           </div>
-          <div>
-            <label class="block text-slate-700 dark:text-slate-300 mb-1">Feed Consumed (Grams)</label>
-            <input type="number" step="any" name="feed_grams" placeholder="e.g. 150000" value="0" min="0" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-emerald-600 dark:text-emerald-400 font-bold outline-none focus:border-emerald-500">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 mb-1">Feed Eaten (Grams)</label>
+              <input type="number" step="any" name="feed_grams" id="globalDailyFeedGrams" placeholder="Auto-filled by age" value="0" min="0" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-emerald-600 dark:text-emerald-400 font-bold outline-none focus:border-emerald-500">
+            </div>
+            <div>
+              <label class="block text-rose-600 dark:text-rose-400 mb-1">Wasted / Spilled Feed (g)</label>
+              <input type="number" step="any" name="wasted_feed_grams" placeholder="0" value="0" min="0" class="w-full bg-white dark:bg-slate-800 border border-rose-300 dark:border-rose-500/40 rounded-xl px-3 py-2 text-rose-600 dark:text-rose-400 font-bold outline-none focus:border-rose-500">
+            </div>
           </div>
         </div>
 
@@ -784,11 +830,13 @@
         <div>
           <label class="block text-slate-700 dark:text-slate-300 mb-1">Select Harvest Flock</label>
           <select name="production_batch_id" id="modalSaleBatchSelect" onchange="syncModalSalePrice()" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white outline-none focus:border-cyan-500">
-            @foreach ($productionBatches as $pb)
+            @forelse ($globalActiveProdBatches as $pb)
               <option value="{{ $pb['id'] }}" data-rec-price="{{ $pb['metrics']['recommended_selling_price'] }}">
                 {{ $pb['batch_code'] }} ({{ number_format($pb['metrics']['current_in_house_birds']) }} available • Rec: ₦{{ number_format($pb['metrics']['recommended_selling_price'], 2) }})
               </option>
-            @endforeach
+            @empty
+              <option value="" disabled selected>-- No Available Flocks (All Sold Out) --</option>
+            @endforelse
           </select>
         </div>
 
@@ -799,7 +847,7 @@
           </div>
           <div>
             <label class="block text-slate-700 dark:text-slate-300 mb-1">Selling Price / Bird (₦)</label>
-            <input type="number" step="0.01" min="0.01" name="unit_price" id="modalSaleUnitPrice" value="{{ $productionBatches[0]['metrics']['recommended_selling_price'] ?? '' }}" placeholder="e.g. 1850" required class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-emerald-600 dark:text-emerald-400 font-bold outline-none focus:border-emerald-500">
+            <input type="number" step="0.01" min="0.01" name="unit_price" id="modalSaleUnitPrice" value="{{ $globalActiveProdBatches[0]['metrics']['recommended_selling_price'] ?? '' }}" placeholder="e.g. 1850" required class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-emerald-600 dark:text-emerald-400 font-bold outline-none focus:border-emerald-500">
           </div>
         </div>
 
@@ -1096,13 +1144,68 @@
       }
     }
 
+    function syncGlobalDailyLogModal() {
+      const sel = document.getElementById('globalDailyBatchSelect');
+      if (!sel || !sel.selectedOptions || !sel.selectedOptions.length) return;
+      const opt = sel.selectedOptions[0];
+      const avail = parseInt(opt.dataset.available || '0', 10) || 0;
+      const ageDays = parseInt(opt.dataset.ageDays || '0', 10) || 0;
+      const ageWeeks = parseInt(opt.dataset.ageWeeks || '0', 10) || 0;
+      const recGBird = parseFloat(opt.dataset.recGBird || '0') || 0;
+      const recGrams = parseFloat(opt.dataset.recGrams || '0') || 0;
+      const recCat = opt.dataset.recCat || 'starter';
+      const actualAvgBird = parseFloat(opt.dataset.actualAvgBird || '0') || 0;
+      const feedDays = parseInt(opt.dataset.feedDays || '0', 10) || 0;
+
+      const availEl = document.getElementById('globalDailyAvailBirds');
+      const ageEl = document.getElementById('globalDailyFlockAge');
+      const recEl = document.getElementById('globalDailyRecFeed');
+      const avgEl = document.getElementById('globalDailyFarmAvg');
+      if (availEl) availEl.textContent = avail.toLocaleString();
+      if (ageEl) ageEl.textContent = ageDays > 0 ? `Day ${ageDays} (Wk ${ageWeeks}) • ${recCat.toUpperCase()}` : 'No active flock';
+      if (recEl) recEl.textContent = recGrams > 0 ? `Auto Feed: ${recGBird}g/bird → ${recGrams.toLocaleString()}g (${(recGrams/1000).toFixed(2)}kg)` : 'Auto Feed: —';
+      if (avgEl) {
+        if (feedDays > 0 && actualAvgBird > 0) {
+          avgEl.textContent = `• Avg: ${actualAvgBird}g/bird`;
+          avgEl.classList.remove('hidden');
+        } else {
+          avgEl.classList.add('hidden');
+        }
+      }
+
+      const feedInput = document.getElementById('globalDailyFeedGrams');
+      if (feedInput && recGrams > 0) {
+        feedInput.value = recGrams;
+      }
+
+      const feedSel = document.getElementById('globalDailyFeedSelect');
+      if (feedSel) {
+        let matchedVal = '';
+        let fallbackVal = '';
+        Array.from(feedSel.options).forEach((o) => {
+          if (!o.value) return;
+          const rem = parseFloat(o.dataset.rem || '0') || 0;
+          if (rem <= 0) return;
+          if (o.dataset.cat === recCat && !matchedVal) matchedVal = o.value;
+          if (!fallbackVal) fallbackVal = o.value;
+        });
+        if (matchedVal || fallbackVal) {
+          feedSel.value = matchedVal || fallbackVal;
+        }
+      }
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
       updateTransferPricingPreview();
       syncModalSalePrice();
+      syncGlobalDailyLogModal();
     });
 
     // Modal Control Functions
     function openModal(id) {
+      if (id === 'dailyLogModal') {
+        syncGlobalDailyLogModal();
+      }
       const modal = document.getElementById(id);
       const box = document.getElementById(id + 'Box');
       if (!modal || !box) return;
