@@ -72,33 +72,39 @@ class AiCopilotService
 
         $systemSnapshot = $this->buildLiveSystemSnapshot();
 
-        // Check if backend environment or store has a Gemini key; otherwise use the built-in Farm & Veterinary AI Engine
-        $apiKey = (string) (getenv('GEMINI_API_KEY') ?: $this->farm->getDatabase()->getSetting('gemini_api_key', '') ?: '');
-        $model = (string) ($this->farm->getDatabase()->getSetting('gemini_model', 'gemini-2.5-flash') ?: 'gemini-2.5-flash');
-        if ($model === 'gemini-3.8-flash') {
+        // Check if backend environment or store has a Gemini key; otherwise use the offline fallback engine
+        $apiKey = trim((string) (getenv('GEMINI_API_KEY') ?: $this->farm->getDatabase()->getSetting('gemini_api_key', '') ?: ''));
+        $model = trim((string) ($this->farm->getDatabase()->getSetting('gemini_model', 'gemini-2.5-flash') ?: 'gemini-2.5-flash'));
+        if ($model === '' || $model === 'gemini-3.8-flash') {
             $model = 'gemini-2.5-flash';
         }
 
+        $geminiFailed = false;
         if ($apiKey !== '') {
-            $geminiReply = $this->callGeminiInteractionsApi($apiKey, $model, $question, $systemSnapshot);
-            if ($geminiReply !== null) {
-                $this->saveChatTurn($question, $geminiReply, 'Farm & Vet AI');
+            $geminiRes = $this->callGeminiInteractionsApi($apiKey, $model, $question, $systemSnapshot);
+            if ($geminiRes !== null) {
+                $engineLabel = 'Google Gemini • ' . $geminiRes['model'];
+                $this->saveChatTurn($question, $geminiRes['text'], $engineLabel);
                 return [
-                    'answer' => $geminiReply,
-                    'answer_html' => self::formatToHtml($geminiReply),
-                    'engine' => 'Farm & Vet AI',
+                    'answer' => $geminiRes['text'],
+                    'answer_html' => self::formatToHtml($geminiRes['text']),
+                    'engine' => $engineLabel,
                     'timestamp' => date('H:i'),
                 ];
             }
+            $geminiFailed = true;
         }
 
         $localReply = $this->generateSmartFarmResponse($question, $systemSnapshot);
-        $this->saveChatTurn($question, $localReply, 'Farm & Vet AI');
+        $fallbackEngine = $geminiFailed
+            ? 'Offline Fallback (Check Gemini Key / Quota)'
+            : 'Offline Local Mode (Connect Gemini Key for Full AI)';
+        $this->saveChatTurn($question, $localReply, $fallbackEngine);
 
         return [
             'answer' => $localReply,
             'answer_html' => self::formatToHtml($localReply),
-            'engine' => 'Farm & Vet AI',
+            'engine' => $fallbackEngine,
             'timestamp' => date('H:i'),
         ];
     }
@@ -337,74 +343,166 @@ class AiCopilotService
         ];
     }
 
-    private function callGeminiInteractionsApi(string $apiKey, string $model, string $question, array $snapshot): ?string
+    private function buildCompactFarmBriefing(array $snapshot): array
+    {
+        $activeFlocks = [];
+        $soldOutFlocks = [];
+        foreach ($snapshot['production_batches'] ?? [] as $pb) {
+            $m = $pb['metrics'] ?? [];
+            $live = (int) ($m['current_in_house_birds'] ?? 0);
+            $entry = [
+                'batch_code' => $pb['batch_code'] ?? '',
+                'breed' => $pb['flock_type'] ?? '',
+                'status' => $pb['status'] ?? 'Active',
+                'age_days' => (int) ($pb['age_days'] ?? 1),
+                'age_weeks' => (int) ($pb['age_weeks'] ?? 1),
+                'initial_birds' => (int) ($m['initial_birds'] ?? 0),
+                'mortality' => (int) ($m['total_mortality'] ?? 0),
+                'sold' => (int) ($m['total_birds_sold'] ?? 0),
+                'live_birds' => $live,
+                'last_feed_used' => $m['last_feed_item_name'] ?? null,
+                'actual_avg_feed_g_per_bird_day' => (float) ($m['actual_avg_feed_g_per_bird'] ?? 0),
+                'actual_avg_feed_g_per_day' => (float) ($m['actual_avg_feed_grams_per_day'] ?? 0),
+                'feed_logged_days' => (int) ($m['feed_logged_days'] ?? 0),
+                'age_rate_feed_g_per_bird_day' => (float) ($m['recommended_feed_g_per_bird'] ?? 0),
+                'age_rate_total_daily_feed_g' => (float) ($m['recommended_daily_feed_grams'] ?? 0),
+                'total_feed_consumed_kg' => (float) ($m['total_feed_kg'] ?? 0),
+                'total_wasted_feed_kg' => (float) ($m['total_wasted_feed_kg'] ?? 0),
+                'variable_flock_cost_ngn' => (float) ($m['total_accumulated_cost'] ?? 0),
+                'variable_cost_per_bird_ngn' => (float) ($m['cost_per_bird'] ?? 0),
+                'recommended_selling_price_ngn' => (float) ($m['recommended_selling_price'] ?? 0),
+                'realized_revenue_ngn' => (float) ($m['realized_revenue'] ?? 0),
+                'realized_gross_profit_ngn' => (float) ($m['realized_gross_profit'] ?? 0),
+            ];
+            if ($live > 0 && ($pb['status'] ?? 'Active') !== 'Completed') {
+                $activeFlocks[] = $entry;
+            } else {
+                $soldOutFlocks[] = $entry;
+            }
+        }
+
+        $feedStock = [];
+        $medStock = [];
+        foreach ($snapshot['inventory_items'] ?? [] as $it) {
+            $row = [
+                'name' => $it['item_name'] ?? '',
+                'category' => $it['category'] ?? '',
+                'remaining' => (float) ($it['total_quantity_g_or_ml'] ?? 0),
+                'unit' => $it['unit_label'] ?? 'g',
+                'unit_cost_ngn' => (float) ($it['unit_cost_per_g_or_ml'] ?? 0),
+            ];
+            if (($it['category'] ?? '') === 'medicine') {
+                $medStock[] = $row;
+            } else {
+                $feedStock[] = $row;
+            }
+        }
+
+        $fin = $this->farm->getWholeFarmFinancials();
+        return [
+            'today_date' => date('Y-m-d'),
+            'active_flocks' => $activeFlocks,
+            'sold_out_flocks' => $soldOutFlocks,
+            'whole_farm_financials' => [
+                'total_sales_billed_ngn' => (float) ($fin['total_sales_billed'] ?? 0),
+                'cash_collected_ngn' => (float) ($fin['cash_collected'] ?? 0),
+                'total_variable_flock_cost_ngn' => (float) ($fin['total_variable_cost'] ?? 0),
+                'whole_farm_gross_profit_ngn' => (float) ($fin['gross_farm_profit'] ?? 0),
+                'gross_margin_pct' => (float) ($fin['gross_margin_pct'] ?? 0),
+                'fixed_assets_total_ngn' => (float) ($fin['fixed_capital_total'] ?? 0),
+                'annual_farm_rent_ngn' => (float) ($fin['annual_farm_rent'] ?? 0),
+                'general_overhead_ngn' => (float) ($fin['total_general_overhead'] ?? 0),
+                'whole_farm_net_profit_ngn' => (float) ($fin['net_farm_profit'] ?? 0),
+                'total_net_worth_ngn' => (float) ($fin['total_net_worth'] ?? 0),
+            ],
+            'feed_inventory' => $feedStock,
+            'medication_inventory' => $medStock,
+            'active_incubation_batches' => count(array_filter($snapshot['incubation_batches'] ?? [], fn($b) => ($b['status'] ?? '') === 'Active')),
+        ];
+    }
+
+    private function callGeminiInteractionsApi(string $apiKey, string $model, string $question, array $snapshot): ?array
     {
         $vetSummary = VeterinaryKnowledgeBase::getSystemPromptSummary();
         $memories = $snapshot['custom_farm_memories'] ?? [];
-        $memoryLines = array_map(fn($m) => "- [{$m['category']}] {$m['fact']}", array_slice(array_reverse($memories), 0, 25));
+        $memoryLines = array_map(fn($m) => "- [{$m['category']}] {$m['fact']}", array_slice(array_reverse($memories), 0, 20));
         $memoryBlock = !empty($memoryLines) ? implode("\n", $memoryLines) : '- No custom farm rules saved yet.';
-        $systemInstruction = "You are Google Gemini, serving as the intelligent Poultry Farm & Veterinary AI Copilot for Blackswan Farms and General Enterprises, embedded inside their Poultry Farm & Hatchery Management System. "
-            . "You possess deep domain veterinary learning extracted from Dr. Kosiella's authoritative textbooks AND the MSD Veterinary Consult Clinical Handbooks (Poultry Farming Success, Farmer's Veterinary Clinical Handbook, Goat Farming Handbook, and MSD Clinical Practical Procedures). "
-            . "You have direct real-time access to the farm's live database snapshot (batches, daily telemetry, mortality, expenses, feed inventory, uploaded medications, clinical reminders, and persistent learned farm memory). "
-            . "Always apply the farm's learned rules/history in `LEARNED FARM MEMORY` alongside the clinical protocols. "
-            . "Talk naturally, fluently, and intelligently like official Google Gemini. "
-            . "When the user asks about diseases, vaccines, or medications, look at the uploaded medications in the database, recommend the exact product, calculate the dosage for the active flock size, and give sound clinical guidance. "
-            . "Always enforce critical protocols: e.g. Turkey poults strictly need 28% Crude Protein (cannot survive on broiler feed), never house turkeys with chickens due to Blackhead Disease (Histomoniasis), stop antibiotics 24h before live vaccines, neutralize water with 20g/10L skimmed milk, withhold water 1.5-2h before vaccination, avoid unbalanced feed dilution, observe drug withdrawal periods, and manage wet litter/aflatoxins during the rainy season. "
-            . "When the user asks about financial or batch metrics, use exact Naira (₦) figures and batch codes from the data. "
-            . "Do not give robotic or rigid answers; be conversational, sharp, and helpful.\n\n"
-            . "LEARNED FARM MEMORY (AUTO-LEARNED & MANAGER RULES):\n" . $memoryBlock . "\n\n"
+        $briefing = $this->buildCompactFarmBriefing($snapshot);
+
+        $systemInstruction = "You are the expert Poultry Farm & Veterinary AI Copilot for Blackswan Farms and General Enterprises. "
+            . "Answer the manager's exact question directly, concisely, and naturally using their LIVE FARM DATA below. "
+            . "Never dump unrelated tables or inventory lists unless asked. "
+            . "Use exact Naira (₦) figures, gram/kg quantities, and batch codes from the live data. "
+            . "You know poultry & turkey nutrition, vaccination schedules, medication dosing from uploaded stock, and Gross Profit (variable flock costs only) vs Whole-Farm Net Profit (after fixed assets, rent & general overhead). "
+            . "Enforce critical safety rules when relevant: Turkey poults need 28% CP; never house turkeys with chickens (Blackhead); stop antibiotics 24h before/after live vaccines; neutralize vaccine water with 20g skimmed milk per 10L.\n\n"
+            . "LEARNED FARM MEMORY:\n" . $memoryBlock . "\n\n"
             . $vetSummary . "\n\n"
-            . "LIVE FARM DATABASE SNAPSHOT:\n" . json_encode($snapshot, JSON_UNESCAPED_UNICODE);
+            . "LIVE FARM DATA BRIEFING:\n" . json_encode($briefing, JSON_UNESCAPED_UNICODE);
+
+        // Multi-turn conversation context (last 10 stored turns)
+        $contents = [];
+        $rawHistory = $this->farm->getDatabase()->getTable('ai_chat_history');
+        foreach (array_slice($rawHistory, -10) as $turn) {
+            $text = trim((string) ($turn['message'] ?? ''));
+            if ($text === '') {
+                continue;
+            }
+            $role = (($turn['role'] ?? '') === 'user') ? 'user' : 'model';
+            $contents[] = [
+                'role' => $role,
+                'parts' => [['text' => mb_substr($text, 0, 1200)]],
+            ];
+        }
+        $contents[] = [
+            'role' => 'user',
+            'parts' => [['text' => $question]],
+        ];
 
         $payload = json_encode([
             'system_instruction' => [
-                'parts' => [
-                    ['text' => $systemInstruction]
-                ]
+                'parts' => [['text' => $systemInstruction]],
             ],
-            'contents' => [
-                [
-                    'role' => 'user',
-                    'parts' => [
-                        ['text' => $question]
-                    ]
-                ]
-            ],
+            'contents' => $contents,
             'generationConfig' => [
-                'temperature' => 0.7,
-                'maxOutputTokens' => 4000,
-            ]
+                'temperature' => 0.5,
+                'maxOutputTokens' => 2048,
+            ],
         ], JSON_UNESCAPED_UNICODE);
 
-        $modelName = !empty($model) ? $model : 'gemini-2.5-flash-lite';
-        $url = "https://generativelanguage.googleapis.com/v1beta/models/{$modelName}:generateContent?key=" . urlencode($apiKey);
+        $primaryModel = (!empty($model) && $model !== 'gemini-3.8-flash') ? $model : 'gemini-2.5-flash';
+        $candidates = array_values(array_unique([$primaryModel, 'gemini-2.5-flash', 'gemini-2.5-flash-lite']));
 
-        // Uses HTTP stream context so it works reliably on any PHP installation (even without php-curl)
         $opts = [
             'http' => [
                 'method' => 'POST',
                 'header' => "Content-Type: application/json\r\n",
                 'content' => $payload,
-                'timeout' => 30,
+                'timeout' => 25,
                 'ignore_errors' => true,
             ],
             'ssl' => [
                 'verify_peer' => true,
                 'verify_peer_name' => true,
-            ]
+            ],
         ];
 
-        try {
-            $ctx = stream_context_create($opts);
-            $response = @file_get_contents($url, false, $ctx);
-            if ($response !== false) {
-                $decoded = json_decode($response, true);
-                if (isset($decoded['candidates'][0]['content']['parts'][0]['text'])) {
-                    return (string) $decoded['candidates'][0]['content']['parts'][0]['text'];
+        foreach ($candidates as $tryModel) {
+            $url = "https://generativelanguage.googleapis.com/v1beta/models/" . rawurlencode($tryModel) . ":generateContent?key=" . urlencode($apiKey);
+            try {
+                $ctx = stream_context_create($opts);
+                $response = @file_get_contents($url, false, $ctx);
+                if ($response !== false) {
+                    $decoded = json_decode($response, true);
+                    if (isset($decoded['candidates'][0]['content']['parts'][0]['text'])) {
+                        return [
+                            'text' => (string) $decoded['candidates'][0]['content']['parts'][0]['text'],
+                            'model' => $tryModel,
+                        ];
+                    }
                 }
+            } catch (\Throwable $e) {
+                // try next model
             }
-        } catch (\Throwable $e) {
-            // Log or fallback
         }
 
         return null;
@@ -684,6 +782,59 @@ class AiCopilotService
                 }
             }
             return implode("\n", $lines);
+        }
+
+        // 7b. Average Daily Feed Consumption per Bird / per Flock (e.g. "average feed that each noiler per day")
+        if (preg_match('/(average|avg|per\s+bird|per\s+day|daily\s+feed|how\s+much\s+feed|feed\s+rate|eat|consum)/i', $q)
+            && preg_match('/(feed|eat|consum|gram|kg|per\s+day|per\s+bird|noiler|turkey|broiler|layer|chick|bird)/i', $q)) {
+            $activeOnly = array_values(array_filter($prodBatches, fn($pb) => (int) ($pb['metrics']['current_in_house_birds'] ?? 0) > 0 && ($pb['status'] ?? 'Active') !== 'Completed'));
+            $speciesFilter = null;
+            foreach (['noiler', 'turkey', 'broiler', 'layer', 'cockerel', 'silver'] as $sp) {
+                if (str_contains($q, $sp)) {
+                    $speciesFilter = $sp;
+                    break;
+                }
+            }
+            $filtered = $speciesFilter !== null
+                ? array_values(array_filter($activeOnly, fn($pb) => str_contains(strtolower((string) ($pb['flock_type'] ?? '')), $speciesFilter)))
+                : $activeOnly;
+            if (empty($filtered)) {
+                $filtered = $activeOnly;
+            }
+
+            if (empty($filtered)) {
+                return "You don't have any active production flocks with live birds right now.";
+            }
+
+            $heading = $speciesFilter ? ('Average Daily Feed per Bird — ' . ucfirst($speciesFilter) . ' Flocks') : 'Average Daily Feed Consumption per Active Flock';
+            $lines = ["### {$heading}\n"];
+            foreach ($filtered as $pb) {
+                $m = $pb['metrics'];
+                $live = (int) ($m['current_in_house_birds'] ?? 0);
+                $actualBird = (float) ($m['actual_avg_feed_g_per_bird'] ?? 0);
+                $actualDay = (float) ($m['actual_avg_feed_grams_per_day'] ?? 0);
+                $feedDays = (int) ($m['feed_logged_days'] ?? 0);
+                $ageRateBird = (float) ($m['recommended_feed_g_per_bird'] ?? 0);
+                $ageRateDay = (float) ($m['recommended_daily_feed_grams'] ?? 0);
+                $lastFeed = $m['last_feed_item_name'] ?? 'Not logged yet';
+                $lines[] = "- **{$pb['batch_code']}** ({$pb['flock_type']} • **{$live} live birds** • Day {$pb['age_days']} / Week {$pb['age_weeks']}):\n"
+                    . "  • **Your Logged Farm Average:** " . ($feedDays > 0 ? "**" . number_format($actualBird, 1) . " g / bird / day** (" . number_format($actualDay, 0) . " g/day across {$feedDays} logged day(s))" : "No feed logs yet") . "\n"
+                    . "  • **Recommended Age-Rate Standard:** **" . number_format($ageRateBird, 0) . " g / bird / day** → **" . number_format($ageRateDay, 0) . " g/day** (" . number_format($ageRateDay / 1000, 2) . " kg/day)\n"
+                    . "  • **Current Feed:** {$lastFeed}";
+            }
+            return implode("\n", $lines);
+        }
+
+        // 7c. Whole-Farm Gross Profit vs Net Profit & Fixed Assets Waterfall
+        if (preg_match('/(gross\s*profit|net\s*profit|fixed\s*asset|waterfall|whole[\s-]*farm|net\s*worth|financial\s*statement)/i', $q)) {
+            $fin = $this->farm->getWholeFarmFinancials();
+            return "### Whole-Farm Financial Position (Gross → Net Waterfall)\n"
+                . "- **Total Sales Revenue Billed:** **₦" . number_format((float) ($fin['total_sales_billed'] ?? 0), 2) . "** (Collected: ₦" . number_format((float) ($fin['cash_collected'] ?? 0), 2) . ")\n"
+                . "- **− Total Variable Flock Costs** (DOC, Feed, Water, Labour, Meds, Sanitation): **₦" . number_format((float) ($fin['total_variable_cost'] ?? 0), 2) . "**\n"
+                . "- **= Whole-Farm Gross Profit:** **₦" . number_format((float) ($fin['gross_farm_profit'] ?? 0), 2) . "** (Gross Margin: **" . number_format((float) ($fin['gross_margin_pct'] ?? 0), 1) . "%**)\n"
+                . "- **− Fixed Assets, Annual Rent & General Overhead:** **₦" . number_format((float) ($fin['total_fixed_costs_and_assets'] ?? 0), 2) . "** (Assets: ₦" . number_format((float) ($fin['fixed_capital_total'] ?? 0), 0) . " • Rent: ₦" . number_format((float) ($fin['annual_farm_rent'] ?? 0), 0) . " • Overhead: ₦" . number_format((float) ($fin['total_general_overhead'] ?? 0), 0) . ")\n"
+                . "- **= Whole-Farm Net Profit:** **₦" . number_format((float) ($fin['net_farm_profit'] ?? 0), 2) . "**\n"
+                . "- **Total Farm Net Worth (At Cost):** **₦" . number_format((float) ($fin['total_net_worth'] ?? 0), 2) . "**";
         }
 
         // 8. Feed & Inventory Stock questions

@@ -325,14 +325,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             case 'clear_ai_chat':
                 $ai->clearChatHistory();
-                $_SESSION['flash_success'] = 'Farm AI conversation history reset.';
+                $setFlash('flash_success', 'Farm AI conversation history reset.');
                 header('Location: /?page=ai');
                 exit;
 
             case 'save_ai_settings':
                 $db->setSetting('gemini_api_key', trim((string) ($_POST['gemini_api_key'] ?? '')));
-                $db->setSetting('gemini_model', trim((string) ($_POST['gemini_model'] ?? 'gemini-3.8-flash')));
-                $_SESSION['flash_success'] = 'AI Copilot configuration saved.';
+                $savedModel = trim((string) ($_POST['gemini_model'] ?? 'gemini-2.5-flash'));
+                if ($savedModel === '' || $savedModel === 'gemini-3.8-flash') {
+                    $savedModel = 'gemini-2.5-flash';
+                }
+                $db->setSetting('gemini_model', $savedModel);
+                $setFlash('flash_success', 'Google Gemini AI settings saved successfully.');
                 header('Location: /?page=ai');
                 exit;
 
@@ -542,7 +546,7 @@ if ($isPartialRequest) {
         'aiChatHistory' => $currentPage === 'ai' ? $ai->getChatHistory() : [],
         'aiMemories' => $currentPage === 'ai' ? $farm->getAiMemories() : [],
         'geminiApiKey' => (string) $db->getSetting('gemini_api_key', ''),
-        'geminiModel' => (string) $db->getSetting('gemini_model', 'gemini-3.8-flash'),
+        'geminiModel' => ((string) $db->getSetting('gemini_model', 'gemini-2.5-flash') === 'gemini-3.8-flash') ? 'gemini-2.5-flash' : (string) $db->getSetting('gemini_model', 'gemini-2.5-flash'),
         'flashSuccess' => $flashSuccess,
         'flashError' => $flashError,
     ];
@@ -575,7 +579,7 @@ $viewData = [
     'aiChatHistory' => $ai->getChatHistory(),
     'aiMemories' => $currentPage === 'ai' ? $farm->getAiMemories() : [],
     'geminiApiKey' => (string) $db->getSetting('gemini_api_key', ''),
-    'geminiModel' => (string) $db->getSetting('gemini_model', 'gemini-3.8-flash'),
+    'geminiModel' => ((string) $db->getSetting('gemini_model', 'gemini-2.5-flash') === 'gemini-3.8-flash') ? 'gemini-2.5-flash' : (string) $db->getSetting('gemini_model', 'gemini-2.5-flash'),
     'flashSuccess' => $flashSuccess,
     'flashError' => $flashError,
 ];

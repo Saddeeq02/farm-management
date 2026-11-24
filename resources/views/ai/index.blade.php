@@ -15,11 +15,21 @@
                     <i class="fa-solid fa-robot text-sm"></i>
                 </div>
                 <div>
+                    @php
+                        $hasGeminiKey = !empty($geminiApiKey) || !empty(getenv('GEMINI_API_KEY'));
+                        $activeGeminiModel = (!empty($geminiModel) && $geminiModel !== 'gemini-3.8-flash') ? $geminiModel : 'gemini-2.5-flash';
+                    @endphp
                     <div class="flex items-center gap-2">
                         <h2 class="text-sm font-bold text-white">Farm &amp; Veterinary AI Assistant</h2>
-                        <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold">
-                            Active
-                        </span>
+                        @if ($hasGeminiKey)
+                            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold">
+                                Live Gemini ({{ $activeGeminiModel }})
+                            </span>
+                        @else
+                            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold">
+                                Offline Mode • Add Key →
+                            </span>
+                        @endif
                     </div>
                     <p class="text-[11px] text-slate-400">Connected to your live flocks, medications, hatchery, and pricing</p>
                 </div>
@@ -71,8 +81,44 @@
         </form>
     </div>
 
-    <!-- Right 1/3: Uploaded Medications Clinical Card + Quick Questions -->
+    <!-- Right 1/3: Gemini AI Connection + Uploaded Medications + Quick Questions -->
     <div class="space-y-5">
+        <!-- Connect Real Google Gemini AI -->
+        <div class="glass-card rounded-2xl p-5 border {{ $hasGeminiKey ? 'border-emerald-500/35' : 'border-amber-500/40' }} space-y-3">
+            <div class="flex items-center justify-between gap-2">
+                <div>
+                    <h3 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <i class="fa-solid fa-sparkles {{ $hasGeminiKey ? 'text-emerald-500' : 'text-amber-500' }}"></i>
+                        Google Gemini AI Brain
+                    </h3>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400">
+                        {{ $hasGeminiKey ? 'Connected — multi-turn Gemini AI is answering with your live farm data.' : 'Paste a free Google AI Studio key to unlock full natural-language Gemini AI.' }}
+                    </p>
+                </div>
+            </div>
+            <form method="POST" action="/?page=ai" class="space-y-2.5 text-xs">
+                @csrf
+                <input type="hidden" name="action" value="save_ai_settings">
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">
+                        Gemini API Key (<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="text-emerald-600 dark:text-emerald-400 underline">Get free key</a>)
+                    </label>
+                    <input type="password" name="gemini_api_key" value="{{ $geminiApiKey ?? '' }}" placeholder="AIzaSy..."
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-mono text-slate-900 dark:text-white focus:border-emerald-500 focus:outline-none">
+                </div>
+                <div class="flex items-center gap-2">
+                    <select name="gemini_model" class="flex-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-white focus:border-emerald-500 focus:outline-none">
+                        <option value="gemini-2.5-flash" {{ $activeGeminiModel === 'gemini-2.5-flash' ? 'selected' : '' }}>gemini-2.5-flash (Recommended)</option>
+                        <option value="gemini-2.5-flash-lite" {{ $activeGeminiModel === 'gemini-2.5-flash-lite' ? 'selected' : '' }}>gemini-2.5-flash-lite (Fastest)</option>
+                        <option value="gemini-2.5-pro" {{ $activeGeminiModel === 'gemini-2.5-pro' ? 'selected' : '' }}>gemini-2.5-pro (Deepest)</option>
+                    </select>
+                    <button type="submit" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-mono font-bold shrink-0 cursor-pointer">
+                        Save
+                    </button>
+                </div>
+            </form>
+        </div>
+
         <!-- Uploaded Medications & Vaccines Card -->
         <div class="glass-card rounded-2xl p-5 space-y-3.5">
             <div class="flex items-center justify-between gap-2">
