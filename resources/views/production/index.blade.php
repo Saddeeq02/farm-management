@@ -7,6 +7,8 @@
 @section('content')
 @php
     $activeProductionBatches = array_values(array_filter($productionBatches ?? [], fn($pb) => (int)($pb['metrics']['current_in_house_birds'] ?? 0) > 0 && ($pb['status'] ?? 'Active') !== 'Completed'));
+    $soldOutProductionBatches = array_values(array_filter($productionBatches ?? [], fn($pb) => (int)($pb['metrics']['current_in_house_birds'] ?? 0) <= 0 || ($pb['status'] ?? 'Active') === 'Completed'));
+    $afCfg = $autoFeedSettings ?? ['enabled' => true, 'default_water_liters' => 10.0, 'last_run_date' => '', 'overrides' => []];
 @endphp
 <div class="space-y-6">
     <!-- Production Page Header Bar -->
@@ -63,15 +65,26 @@
             <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
                 <div>
                     <h2 class="text-sm font-bold text-slate-900 dark:text-white">Daily Batch Telemetry &amp; Consumption Form</h2>
-                    <p class="text-xs text-slate-500 dark:text-slate-300">Logs mortality, deducts exact grams/ml from inventory, and recalculates Live Cost per Bird.</p>
+                    <p class="text-xs text-slate-500 dark:text-slate-300">
+                        24h Auto-Log is <strong class="{{ !empty($afCfg['enabled']) ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400' }}">{{ !empty($afCfg['enabled']) ? 'ACTIVE' : 'PAUSED' }}</strong>
+                        @if (!empty($afCfg['last_run_date']))
+                            • Last auto-run: <span class="font-mono">{{ $afCfg['last_run_date'] }}</span>
+                        @endif
+                    </p>
                 </div>
-                <form method="POST" action="/?page=production" class="inline" onsubmit="return confirm('Auto-log today\'s age-rate feed &amp; 10L water for all active flocks not yet logged today?');">
-                    @csrf
-                    <input type="hidden" name="action" value="auto_log_daily_feed">
-                    <button type="submit" class="px-3 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-700 dark:text-cyan-300 border border-cyan-500/35 text-[11px] font-mono font-bold transition cursor-pointer flex items-center gap-1.5">
-                        <i class="fa-solid fa-wand-magic-sparkles"></i> Auto-Log Today's Feed &amp; 10L Water (All Flocks)
+                <div class="flex flex-wrap items-center gap-2">
+                    <button type="button" onclick="openModal('autoFeedSettingsModal')"
+                            class="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/35 text-[11px] font-mono font-bold transition cursor-pointer flex items-center gap-1.5">
+                        <i class="fa-solid fa-sliders"></i> 24h Auto-Log Settings
                     </button>
-                </form>
+                    <form method="POST" action="/?page=production" class="inline" onsubmit="return confirm('Run today\'s auto-log now for any active flocks not yet logged today?');">
+                        @csrf
+                        <input type="hidden" name="action" value="auto_log_daily_feed">
+                        <button type="submit" class="px-3 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-700 dark:text-cyan-300 border border-cyan-500/35 text-[11px] font-mono font-bold transition cursor-pointer flex items-center gap-1.5">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i> Run Now
+                        </button>
+                    </form>
+                </div>
             </div>
 
             <form method="POST" action="/?page=production" class="space-y-4">
@@ -446,7 +459,12 @@
                     <tbody class="divide-y divide-slate-200/70 dark:divide-slate-800/70 font-mono">
                         @forelse ($pb['logs'] as $log)
                             <tr class="hover:bg-white/40 dark:hover:bg-slate-800/30 transition-colors">
-                                <td class="py-2.5 text-slate-600 dark:text-slate-300">{{ $log['log_date'] }}</td>
+                                <td class="py-2.5 text-slate-600 dark:text-slate-300">
+                                    {{ $log['log_date'] }}
+                                    @if (!empty($log['is_auto_logged']))
+                                        <span class="ml-1 px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 text-[9px] font-bold">AUTO</span>
+                                    @endif
+                                </td>
                                 <td class="py-2.5 text-right {{ (int)$log['mortality_count'] > 0 ? 'text-rose-600 dark:text-rose-400 font-semibold' : 'text-slate-400 dark:text-slate-500' }}">
                                     {{ $log['mortality_count'] }}
                                 </td>
@@ -525,6 +543,284 @@
             <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Click <strong>+ New Direct DOC Batch</strong> above or transfer hatched chicks from the Incubator module.</p>
         </div>
     @endforelse
+    </div>
+
+    <!-- SOLD-OUT & COMPLETED FLOCKS ARCHIVE (Full Financial, Sales & Telemetry History) -->
+    @if (!empty($soldOutProductionBatches))
+    <div class="space-y-4 pt-4 border-t border-slate-200/80 dark:border-slate-800/80">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+                <h3 class="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                    <i class="fa-solid fa-box-archive text-slate-500 dark:text-slate-400"></i>
+                    Sold-Out &amp; Completed Flocks Archive
+                </h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400">
+                    Out-of-stock batches removed from active catalogs — preserved here with full financial, sales, and daily telemetry history.
+                </p>
+            </div>
+            <span class="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold">
+                {{ count($soldOutProductionBatches) }} Completed Batch(es)
+            </span>
+        </div>
+
+        <div class="space-y-4">
+            @foreach ($soldOutProductionBatches as $sb)
+                @php
+                    $sm = $sb['metrics'];
+                    $realizedGross = (float) ($sm['realized_gross_profit'] ?? ($sm['realized_revenue'] - $sm['total_accumulated_cost']));
+                    $avgSalePrice = (int)($sm['total_birds_sold'] ?? 0) > 0
+                        ? round((float)$sm['realized_revenue'] / (int)$sm['total_birds_sold'], 2)
+                        : 0.0;
+                @endphp
+                <div class="glass-card rounded-2xl overflow-hidden border border-slate-300/70 dark:border-slate-700/70">
+                    <div class="px-5 py-4 bg-slate-100/80 dark:bg-slate-900/60 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/70 dark:border-slate-800/70">
+                        <div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="text-sm font-mono font-extrabold text-slate-900 dark:text-white">{{ $sb['batch_code'] }}</span>
+                                <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-500/20 text-slate-700 dark:text-slate-300 border border-slate-500/30 font-mono font-bold uppercase">Sold Out</span>
+                                <span class="text-xs font-semibold text-slate-700 dark:text-slate-200">{{ $sb['flock_type'] }}</span>
+                            </div>
+                            <p class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">
+                                Started {{ $sb['start_date'] }} • Init: {{ number_format($sm['initial_birds']) }} • Dead: {{ number_format($sm['total_mortality']) }} • Sold: {{ number_format($sm['total_birds_sold']) }}
+                            </p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button type="button" onclick="openBatchPnLModal({{ (int)$sb['id'] }})"
+                                    class="px-3 py-1.5 rounded-xl bg-slate-800 dark:bg-slate-700 hover:bg-slate-700 dark:hover:bg-slate-600 text-white text-[11px] font-sans font-semibold flex items-center gap-1.5 cursor-pointer">
+                                <i class="fa-solid fa-file-invoice-dollar text-emerald-400"></i> Batch P&amp;L
+                            </button>
+                            <button type="button" onclick="const el = document.getElementById('archiveDetail-{{ (int)$sb['id'] }}'); if(el) el.classList.toggle('hidden');"
+                                    class="px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[11px] font-mono font-bold cursor-pointer">
+                                View Full History &amp; Sales ▾
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 4 Financial Snapshot Tiles -->
+                    <div class="grid grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-200/70 dark:divide-slate-800/70 bg-white/70 dark:bg-slate-900/40 font-mono text-xs">
+                        <div class="p-3.5">
+                            <span class="text-[10px] font-sans uppercase font-semibold text-slate-500 dark:text-slate-400 block">Variable Flock Cost</span>
+                            <span class="text-sm font-bold text-slate-900 dark:text-white">₦{{ number_format((float)$sm['total_accumulated_cost'], 2) }}</span>
+                            <span class="block text-[10px] text-slate-500">₦{{ number_format((float)$sm['cost_per_bird'], 2) }}/bird</span>
+                        </div>
+                        <div class="p-3.5">
+                            <span class="text-[10px] font-sans uppercase font-semibold text-slate-500 dark:text-slate-400 block">Total Sales Revenue</span>
+                            <span class="text-sm font-bold text-cyan-600 dark:text-cyan-400">₦{{ number_format((float)$sm['realized_revenue'], 2) }}</span>
+                            <span class="block text-[10px] text-slate-500">Paid: ₦{{ number_format((float)$sm['paid_revenue'], 0) }} • Due: ₦{{ number_format((float)$sm['total_receivables'], 0) }}</span>
+                        </div>
+                        <div class="p-3.5">
+                            <span class="text-[10px] font-sans uppercase font-semibold text-slate-500 dark:text-slate-400 block">Realized Gross Profit</span>
+                            <span class="text-sm font-extrabold {{ $realizedGross >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400' }}">
+                                {{ $realizedGross >= 0 ? '+' : '' }}₦{{ number_format($realizedGross, 2) }}
+                            </span>
+                            <span class="block text-[10px] text-slate-500">Variable cost basis</span>
+                        </div>
+                        <div class="p-3.5">
+                            <span class="text-[10px] font-sans uppercase font-semibold text-slate-500 dark:text-slate-400 block">Avg Sale vs Cost / Bird</span>
+                            <span class="text-sm font-bold text-slate-900 dark:text-white">₦{{ number_format($avgSalePrice, 2) }}</span>
+                            <span class="block text-[10px] text-slate-500">vs ₦{{ number_format((float)$sm['cost_per_bird'], 2) }} cost</span>
+                        </div>
+                    </div>
+
+                    <!-- Expandable Full Sales & Daily Telemetry History -->
+                    <div id="archiveDetail-{{ (int)$sb['id'] }}" class="hidden p-5 space-y-5 bg-slate-50/70 dark:bg-slate-950/50 border-t border-slate-200/70 dark:border-slate-800/70">
+                        <!-- Sales History -->
+                        <div>
+                            <h4 class="text-[11px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 mb-2">
+                                Sales Transactions History ({{ count($sb['sales'] ?? []) }})
+                            </h4>
+                            <div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/60">
+                                <table class="w-full text-left text-xs">
+                                    <thead>
+                                        <tr class="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-mono text-[10px] uppercase">
+                                            <th class="py-2 px-3">Date</th>
+                                            <th class="py-2 px-3">Customer</th>
+                                            <th class="py-2 px-3 text-right">Birds</th>
+                                            <th class="py-2 px-3 text-right">Unit Price</th>
+                                            <th class="py-2 px-3 text-right">Total</th>
+                                            <th class="py-2 px-3 text-right">Paid / Due</th>
+                                            <th class="py-2 px-3 text-right">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-200/70 dark:divide-slate-800/70 font-mono">
+                                        @forelse ($sb['sales'] ?? [] as $sl)
+                                            <tr>
+                                                <td class="py-2 px-3 text-slate-600 dark:text-slate-300">{{ $sl['sale_date'] ?? '' }}</td>
+                                                <td class="py-2 px-3 font-sans font-semibold text-slate-900 dark:text-white">
+                                                    {{ $sl['buyer_name'] ?? ($sl['customer_name'] ?? 'Direct Buyer') }}
+                                                    @if (!empty($sl['buyer_contact']))
+                                                        <span class="block text-[10px] font-mono text-slate-500">{{ $sl['buyer_contact'] }}</span>
+                                                    @endif
+                                                </td>
+                                                <td class="py-2 px-3 text-right">{{ number_format((int)($sl['birds_sold'] ?? 0)) }}</td>
+                                                <td class="py-2 px-3 text-right">₦{{ number_format((float)($sl['unit_price'] ?? 0), 2) }}</td>
+                                                <td class="py-2 px-3 text-right font-bold text-slate-900 dark:text-white">₦{{ number_format((float)($sl['total_amount'] ?? 0), 2) }}</td>
+                                                <td class="py-2 px-3 text-right">
+                                                    <span class="text-emerald-600 dark:text-emerald-400">₦{{ number_format((float)($sl['amount_paid'] ?? 0), 0) }}</span>
+                                                    @if ((float)($sl['balance_due'] ?? 0) > 0)
+                                                        <span class="text-rose-600 dark:text-rose-400"> / ₦{{ number_format((float)$sl['balance_due'], 0) }} due</span>
+                                                    @endif
+                                                </td>
+                                                <td class="py-2 px-3 text-right font-sans text-[11px] font-semibold">{{ $sl['payment_status'] ?? 'Paid' }}</td>
+                                            </tr>
+                                        @empty
+                                            <tr><td colspan="7" class="py-3 text-center font-sans text-slate-500">No sales records linked.</td></tr>
+                                        @endforelse
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Daily Telemetry History -->
+                        <div>
+                            <h4 class="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-2">
+                                Daily Telemetry &amp; Expense History ({{ count($sb['logs'] ?? []) }} logs)
+                            </h4>
+                            <div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/60">
+                                <table class="w-full text-left text-xs">
+                                    <thead>
+                                        <tr class="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-mono text-[10px] uppercase">
+                                            <th class="py-2 px-3">Date</th>
+                                            <th class="py-2 px-3 text-right">Mort.</th>
+                                            <th class="py-2 px-3 text-right">Water</th>
+                                            <th class="py-2 px-3">Feed</th>
+                                            <th class="py-2 px-3 text-right">Feed Cost</th>
+                                            <th class="py-2 px-3">Meds</th>
+                                            <th class="py-2 px-3 text-right">Daily Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-200/70 dark:divide-slate-800/70 font-mono">
+                                        @forelse ($sb['logs'] ?? [] as $alg)
+                                            <tr>
+                                                <td class="py-2 px-3 text-slate-600 dark:text-slate-300">{{ $alg['log_date'] ?? '' }}</td>
+                                                <td class="py-2 px-3 text-right">{{ (int)($alg['mortality_count'] ?? 0) }}</td>
+                                                <td class="py-2 px-3 text-right">{{ \App\Core\FarmService::fmtQty((float)($alg['water_liters'] ?? 0)) }} L</td>
+                                                <td class="py-2 px-3 font-sans">
+                                                    {{ $alg['feed_item_name'] ?? 'None' }} ({{ \App\Core\FarmService::fmtQty((float)($alg['feed_grams'] ?? 0)) }}g)
+                                                    @if ((float)($alg['wasted_feed_grams'] ?? 0) > 0)
+                                                        <span class="text-rose-500 font-mono text-[10px]">+{{ \App\Core\FarmService::fmtQty((float)$alg['wasted_feed_grams']) }}g waste</span>
+                                                    @endif
+                                                </td>
+                                                <td class="py-2 px-3 text-right">₦{{ number_format((float)($alg['feed_cost_calculated'] ?? 0) + (float)($alg['wasted_feed_cost'] ?? 0), 2) }}</td>
+                                                <td class="py-2 px-3 font-sans">{{ $alg['med_item_name'] ?? 'None' }}</td>
+                                                <td class="py-2 px-3 text-right font-bold text-slate-900 dark:text-white">₦{{ number_format((float)($alg['daily_total_cost'] ?? 0), 2) }}</td>
+                                            </tr>
+                                        @empty
+                                            <tr><td colspan="7" class="py-3 text-center font-sans text-slate-500">No daily telemetry recorded.</td></tr>
+                                        @endforelse
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            @endforeach
+        </div>
+    </div>
+    @endif
+</div>
+
+<!-- MODAL: 24-HOUR AUTOMATIC FEED & WATER SETTINGS -->
+<div id="autoFeedSettingsModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md hidden opacity-0 transition-opacity duration-300">
+    <div id="autoFeedSettingsModalBox" class="glass-card max-w-2xl w-full rounded-3xl p-6 sm:p-7 border border-amber-500/40 relative transform scale-95 transition-transform duration-300 max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center">
+                    <i class="fa-solid fa-sliders"></i>
+                </div>
+                <div>
+                    <h3 class="text-base font-bold text-slate-900 dark:text-white">24-Hour Automatic Feed &amp; Water Settings</h3>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400">Runs automatically once every 24 hours without clicking. Adjust rates before it runs, or click Edit on any logged row afterwards.</p>
+                </div>
+            </div>
+            <button type="button" onclick="closeModal('autoFeedSettingsModal')" class="text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <form method="POST" action="/?page=production" class="space-y-4 text-xs">
+            @csrf
+            <input type="hidden" name="action" value="save_auto_feed_settings">
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-2xl bg-white/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">24-Hour Auto-Logging Status</label>
+                    <select name="auto_feed_enabled" class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono font-bold">
+                        <option value="1" {{ !empty($afCfg['enabled']) ? 'selected' : '' }}>ENABLED (Auto-log every 24h)</option>
+                        <option value="0" {{ empty($afCfg['enabled']) ? 'selected' : '' }}>PAUSED (Manual only)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Default Daily Water per Flock (Liters)</label>
+                    <input type="number" step="any" min="0" name="default_water_liters" value="{{ (float)($afCfg['default_water_liters'] ?? 10) }}" required
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-cyan-700 dark:text-cyan-300 font-bold px-3 py-2 text-xs font-mono">
+                </div>
+            </div>
+
+            <div class="space-y-2.5">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold text-slate-800 dark:text-slate-100">Per-Flock Adjustments (Leave blank to use automatic Age-Rate)</span>
+                </div>
+                @forelse ($activeProductionBatches as $apb)
+                    @php
+                        $am = $apb['metrics'];
+                        $ov = $afCfg['overrides'][(string)$apb['id']] ?? [];
+                    @endphp
+                    <div class="p-3 rounded-xl bg-white/70 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 space-y-2">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <div class="font-mono font-bold text-slate-900 dark:text-white">
+                                {{ $apb['batch_code'] }} <span class="font-sans font-normal text-slate-500">• {{ $apb['flock_type'] }} ({{ number_format($am['current_in_house_birds']) }} birds • Auto: {{ (float)($am['recommended_feed_g_per_bird'] ?? 0) }}g/bird)</span>
+                            </div>
+                            <label class="inline-flex items-center gap-1.5 text-[11px] text-rose-600 dark:text-rose-400 cursor-pointer font-semibold">
+                                <input type="checkbox" name="flock_overrides[{{ $apb['id'] }}][paused]" value="1" {{ !empty($ov['paused']) ? 'checked' : '' }} class="rounded text-rose-500">
+                                Pause this flock
+                            </label>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                            <div>
+                                <label class="block text-[10px] text-slate-500 mb-0.5">Custom g / bird / day</label>
+                                <input type="number" step="any" min="0" name="flock_overrides[{{ $apb['id'] }}][custom_g_per_bird]"
+                                       value="{{ $ov['custom_g_per_bird'] ?? '' }}"
+                                       placeholder="Auto ({{ (float)($am['recommended_feed_g_per_bird'] ?? 0) }}g)"
+                                       class="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs font-mono">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-slate-500 mb-0.5">Preferred Feed Stock</label>
+                                <select name="flock_overrides[{{ $apb['id'] }}][preferred_feed_id]"
+                                        class="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-xs">
+                                    <option value="">Auto ({{ strtoupper($am['recommended_feed_category'] ?? 'starter') }})</option>
+                                    @foreach ($inventoryItems as $fIt)
+                                        @if (in_array($fIt['category'], ['starter', 'grower', 'layer'], true))
+                                            <option value="{{ $fIt['id'] }}" {{ (int)($ov['preferred_feed_id'] ?? 0) === (int)$fIt['id'] ? 'selected' : '' }}>
+                                                [{{ strtoupper($fIt['category']) }}] {{ $fIt['item_name'] }}
+                                            </option>
+                                        @endif
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-slate-500 mb-0.5">Custom Water (L/day)</label>
+                                <input type="number" step="any" min="0" name="flock_overrides[{{ $apb['id'] }}][water_liters]"
+                                       value="{{ $ov['water_liters'] ?? '' }}"
+                                       placeholder="Default ({{ (float)($afCfg['default_water_liters'] ?? 10) }}L)"
+                                       class="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs font-mono">
+                            </div>
+                        </div>
+                    </div>
+                @empty
+                    <p class="text-xs text-slate-500 italic">No active flocks available.</p>
+                @endforelse
+            </div>
+
+            <div class="pt-2 flex items-center justify-end gap-2.5">
+                <button type="button" onclick="closeModal('autoFeedSettingsModal')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold cursor-pointer">
+                    Cancel
+                </button>
+                <button type="submit" class="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-mono font-bold shadow-md cursor-pointer">
+                    Save 24h Auto-Log Settings
+                </button>
+            </div>
+        </form>
     </div>
 </div>
 

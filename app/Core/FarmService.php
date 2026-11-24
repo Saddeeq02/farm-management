@@ -624,13 +624,96 @@ class FarmService
     }
 
     /**
-     * One-click Auto-Log: logs age-based daily feed + 10L water for every active flock not yet logged on $logDate.
+     * 24-Hour Hands-Free Auto-Log Settings (global + per-flock overrides).
+     */
+    public function getAutoFeedSettings(): array
+    {
+        $enabledRaw = $this->db->getSetting('auto_feed_enabled', '1');
+        $enabled = !in_array((string) $enabledRaw, ['0', 'false', 'off', ''], true);
+        $defaultWater = max(0.0, (float) $this->db->getSetting('auto_feed_default_water', 10.0));
+        $lastRunDate = (string) $this->db->getSetting('auto_feed_last_run_date', '');
+        $overridesRaw = $this->db->getSetting('auto_feed_overrides', []);
+        $overrides = is_array($overridesRaw) ? $overridesRaw : [];
+
+        return [
+            'enabled' => $enabled,
+            'default_water_liters' => round($defaultWater, 2),
+            'last_run_date' => $lastRunDate,
+            'overrides' => $overrides,
+        ];
+    }
+
+    public function saveAutoFeedSettings(array $input): void
+    {
+        $enabled = !empty($input['auto_feed_enabled']) && (string) $input['auto_feed_enabled'] !== '0';
+        $defaultWater = round(max(0.0, (float) ($input['default_water_liters'] ?? 10.0)), 2);
+
+        $rawOverrides = isset($input['flock_overrides']) && is_array($input['flock_overrides'])
+            ? $input['flock_overrides']
+            : [];
+        $cleanOverrides = [];
+        foreach ($rawOverrides as $bidKey => $ov) {
+            $bid = (int) $bidKey;
+            if ($bid <= 0 || !is_array($ov)) {
+                continue;
+            }
+            $customG = isset($ov['custom_g_per_bird']) && $ov['custom_g_per_bird'] !== ''
+                ? round(max(0.0, (float) $ov['custom_g_per_bird']), 2)
+                : null;
+            $prefFeedId = isset($ov['preferred_feed_id']) && $ov['preferred_feed_id'] !== ''
+                ? (int) $ov['preferred_feed_id']
+                : null;
+            $waterOv = isset($ov['water_liters']) && $ov['water_liters'] !== ''
+                ? round(max(0.0, (float) $ov['water_liters']), 2)
+                : null;
+            $paused = !empty($ov['paused']);
+
+            $cleanOverrides[(string) $bid] = [
+                'paused' => $paused,
+                'custom_g_per_bird' => $customG,
+                'preferred_feed_id' => $prefFeedId,
+                'water_liters' => $waterOv,
+            ];
+        }
+
+        $this->db->setSetting('auto_feed_enabled', $enabled ? '1' : '0');
+        $this->db->setSetting('auto_feed_default_water', $defaultWater);
+        $this->db->setSetting('auto_feed_overrides', $cleanOverrides);
+    }
+
+    /**
+     * Automatically runs once every 24 hours (once per calendar day) without requiring any button click.
+     */
+    public function runScheduledAutoFeedIfDue(?string $targetDate = null): ?array
+    {
+        $today = (!empty($targetDate) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $targetDate))
+            ? $targetDate
+            : date('Y-m-d');
+        $cfg = $this->getAutoFeedSettings();
+        if (!$cfg['enabled']) {
+            return null;
+        }
+        if ($cfg['last_run_date'] === $today) {
+            return null;
+        }
+
+        $res = $this->autoLogDailyFeedForActiveFlocks($today);
+        $this->db->setSetting('auto_feed_last_run_date', $today);
+        return $res;
+    }
+
+    /**
+     * Auto-Log: logs age-based (or custom-overridden) daily feed + water for every active flock not yet logged on $logDate.
      */
     public function autoLogDailyFeedForActiveFlocks(?string $logDate = null): array
     {
         $targetDate = (!empty($logDate) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $logDate))
             ? $logDate
             : date('Y-m-d');
+
+        $cfg = $this->getAutoFeedSettings();
+        $defaultWater = (float) ($cfg['default_water_liters'] ?? 10.0);
+        $overrides = $cfg['overrides'] ?? [];
 
         $batches = $this->getProductionBatchesEnriched();
         $logged = 0;
@@ -641,6 +724,13 @@ class FarmService
             $m = $pb['metrics'] ?? [];
             $liveBirds = (int) ($m['current_in_house_birds'] ?? 0);
             if ($liveBirds <= 0 || ($pb['status'] ?? 'Active') === 'Completed') {
+                continue;
+            }
+
+            $bidKey = (string) ((int) $pb['id']);
+            $ov = isset($overrides[$bidKey]) && is_array($overrides[$bidKey]) ? $overrides[$bidKey] : [];
+            if (!empty($ov['paused'])) {
+                $skipped++;
                 continue;
             }
 
@@ -657,10 +747,18 @@ class FarmService
                 continue;
             }
 
+            $gPerBird = isset($ov['custom_g_per_bird']) && $ov['custom_g_per_bird'] !== null
+                ? (float) $ov['custom_g_per_bird']
+                : (float) ($m['recommended_feed_g_per_bird'] ?? 0);
+            $recGrams = round($liveBirds * $gPerBird, 2);
+            $waterToLog = isset($ov['water_liters']) && $ov['water_liters'] !== null
+                ? (float) $ov['water_liters']
+                : $defaultWater;
             $recCat = (string) ($m['recommended_feed_category'] ?? 'starter');
-            $recGrams = (float) ($m['recommended_daily_feed_grams'] ?? 0);
+            $prefFeedId = !empty($ov['preferred_feed_id']) ? (int) $ov['preferred_feed_id'] : 0;
 
-            // Pick matching available feed item from Inventory (fresh read each iteration so remaining qty stays exact)
+            // Pick preferred or matching available feed item from Inventory (fresh read each iteration)
+            $preferredFeed = null;
             $feedItem = null;
             $fallbackFeed = null;
             foreach ($this->db->getTable('inventory_items') as $it) {
@@ -669,6 +767,9 @@ class FarmService
                 if (!in_array($cat, ['starter', 'grower', 'layer'], true) || $rem <= 0) {
                     continue;
                 }
+                if ($prefFeedId > 0 && (int) ($it['id'] ?? 0) === $prefFeedId) {
+                    $preferredFeed = $it;
+                }
                 if ($cat === $recCat && ($feedItem === null || $rem > (float) $feedItem['total_quantity_g_or_ml'])) {
                     $feedItem = $it;
                 }
@@ -676,7 +777,7 @@ class FarmService
                     $fallbackFeed = $it;
                 }
             }
-            $chosenFeed = $feedItem ?? $fallbackFeed;
+            $chosenFeed = $preferredFeed ?? $feedItem ?? $fallbackFeed;
             $feedItemId = $chosenFeed ? (int) $chosenFeed['id'] : null;
             $gramsToLog = $chosenFeed ? round(min($recGrams, (float) $chosenFeed['total_quantity_g_or_ml']), 2) : 0.0;
 
@@ -684,18 +785,21 @@ class FarmService
                 'production_batch_id' => (int) $pb['id'],
                 'log_date' => $targetDate,
                 'mortality_count' => 0,
-                'water_liters' => 10.0,
+                'water_liters' => $waterToLog,
                 'feed_item_id' => $feedItemId,
                 'feed_grams' => $gramsToLog,
                 'wasted_feed_grams' => 0.0,
                 'labor_cost' => 0.0,
                 'sanitation_cost' => 0.0,
                 'water_other_cost' => 0.0,
-                'notes' => 'Auto-logged (' . (float) ($m['recommended_feed_g_per_bird'] ?? 0) . 'g/bird × ' . $liveBirds . ' birds • Day ' . (int) ($pb['age_days'] ?? 1) . ' • 10L water)',
+                'is_auto_logged' => true,
+                'notes' => 'Auto-logged (' . $gPerBird . 'g/bird × ' . $liveBirds . ' birds • Day ' . (int) ($pb['age_days'] ?? 1) . ' • ' . $waterToLog . 'L water)',
             ]);
             $logged++;
             $loggedCodes[] = (string) $pb['batch_code'];
         }
+
+        $this->db->setSetting('auto_feed_last_run_date', $targetDate);
 
         return [
             'logged' => $logged,
@@ -1380,6 +1484,7 @@ class FarmService
             'labor_cost' => $laborCost,
             'sanitation_cost' => $sanitationCost,
             'water_other_cost' => $waterOtherCost,
+            'is_auto_logged' => !empty($input['is_auto_logged']),
             'notes' => trim((string) ($input['notes'] ?? '')),
         ]);
 

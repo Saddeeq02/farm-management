@@ -115,6 +115,19 @@ if (!in_array($currentPage, $allowedPages, true)) {
     $currentPage = 'dashboard';
 }
 
+// Vercel Cron & Automated 24-Hour Feed/Water Trigger (strictly idempotent: runs at most once per calendar day)
+if (($_GET['action'] ?? '') === 'cron_autofeed') {
+    $cronRes = $farm->runScheduledAutoFeedIfDue();
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    echo json_encode([
+        'ok' => true,
+        'ran' => $cronRes !== null,
+        'result' => $cronRes,
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 // Handle Auth Actions (Logout & Login)
 if (($_GET['action'] ?? '') === 'logout' || (($_POST['action'] ?? '') === 'logout')) {
     if (session_status() === PHP_SESSION_ACTIVE) {
@@ -170,6 +183,11 @@ if (($_GET['action'] ?? '') === 'download_backup') {
     header('Content-Disposition: attachment; filename="aurapoultry_backup_' . date('Y-m-d_His') . '.json"');
     echo json_encode($farm->exportFullBackup(), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     exit;
+}
+
+// Automatically log daily age-rate feed & water once every 24 hours (zero-overhead no-op if already run today)
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['action'] ?? '') === '') {
+    $farm->runScheduledAutoFeedIfDue();
 }
 
 // Handle POST Actions
@@ -451,10 +469,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'auto_log_daily_feed':
                 $res = $farm->autoLogDailyFeedForActiveFlocks($_POST['log_date'] ?? null);
                 if ($res['logged'] > 0) {
-                    $setFlash('flash_success', "Auto-logged daily age-rate feed & 10L water for {$res['logged']} active flock(s) (" . implode(', ', $res['batches']) . ")" . ($res['skipped'] > 0 ? "; skipped {$res['skipped']} already logged today." : '.'));
+                    $setFlash('flash_success', "Auto-logged daily age-rate feed & water for {$res['logged']} active flock(s) (" . implode(', ', $res['batches']) . ")" . ($res['skipped'] > 0 ? "; skipped {$res['skipped']} already logged/paused." : '.'));
                 } else {
-                    $setFlash('flash_success', $res['skipped'] > 0 ? "All {$res['skipped']} active flock(s) already have telemetry logged for {$res['date']}." : 'No active flocks available to auto-log.');
+                    $setFlash('flash_success', $res['skipped'] > 0 ? "All {$res['skipped']} active flock(s) already have telemetry logged (or paused) for {$res['date']}." : 'No active flocks available to auto-log.');
                 }
+                header('Location: /?page=production');
+                exit;
+
+            case 'save_auto_feed_settings':
+                $farm->saveAutoFeedSettings($_POST);
+                $setFlash('flash_success', '24-hour automatic feed & water settings saved. Future daily auto-logs will use your updated settings.');
                 header('Location: /?page=production');
                 exit;
 
@@ -504,6 +528,7 @@ if ($isPartialRequest) {
         'productionBatches' => in_array($currentPage, ['dashboard', 'production', 'sales'], true) ? $farm->getProductionBatchesEnriched() : [],
         'layersOverview' => in_array($currentPage, ['layers', 'eggs'], true) ? $farm->getLayersOverview() : [],
         'generalRent' => in_array($currentPage, ['inventory', 'production'], true) ? $farm->getGeneralRentMetrics() : [],
+        'autoFeedSettings' => $currentPage === 'production' ? $farm->getAutoFeedSettings() : [],
         'generalExpenses' => $currentPage === 'inventory' ? $farm->getGeneralFarmExpenses() : [],
         'inventoryWasteLogs' => $currentPage === 'inventory' ? $farm->getInventoryWasteLogs() : [],
         'wholeFarmFinancials' => $currentPage === 'finance' ? $farm->getWholeFarmFinancials() : [],
@@ -536,6 +561,7 @@ $viewData = [
     'productionBatches' => $farm->getProductionBatchesEnriched(),
     'layersOverview' => in_array($currentPage, ['layers', 'eggs', 'finance'], true) ? $farm->getLayersOverview() : [],
     'generalRent' => in_array($currentPage, ['inventory', 'production', 'finance'], true) ? $farm->getGeneralRentMetrics() : [],
+    'autoFeedSettings' => $currentPage === 'production' ? $farm->getAutoFeedSettings() : [],
     'generalExpenses' => in_array($currentPage, ['inventory', 'finance'], true) ? $farm->getGeneralFarmExpenses() : [],
     'inventoryWasteLogs' => $currentPage === 'inventory' ? $farm->getInventoryWasteLogs() : [],
     'wholeFarmFinancials' => $currentPage === 'finance' ? $farm->getWholeFarmFinancials() : [],
