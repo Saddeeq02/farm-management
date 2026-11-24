@@ -1539,7 +1539,7 @@
 
     // Instant All-Page Client Router & Background Prefetch Engine
     (function() {
-      const VALID_PAGES = ['dashboard', 'incubation', 'production', 'layers', 'eggs', 'inventory', 'sales', 'finance', 'ai'];
+      const VALID_PAGES = ['dashboard', 'incubation', 'production', 'eggs', 'inventory', 'sales', 'finance', 'ai'];
       window._bsPageCache = window._bsPageCache || {};
       window._bsInFlight = window._bsInFlight || {};
       let currentActivePage = '{{ $currentPage ?? 'dashboard' }}';

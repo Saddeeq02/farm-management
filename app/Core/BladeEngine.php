@@ -68,8 +68,9 @@ class BladeEngine
             throw new \RuntimeException("Blade view not found: {$view} ({$viewFile})");
         }
 
-        $compiledFile = $this->cachePath . '/' . md5('v3.6:' . $view) . '.php';
-        if (!file_exists($compiledFile) || filemtime($viewFile) > filemtime($compiledFile)) {
+        $contentHash = @md5_file($viewFile) ?: (string) @filemtime($viewFile);
+        $compiledFile = $this->cachePath . '/' . md5('v3.7:' . $view . ':' . $contentHash) . '.php';
+        if (!file_exists($compiledFile)) {
             $raw = file_get_contents($viewFile);
             $compiled = $this->compile($raw);
             file_put_contents($compiledFile, $compiled);

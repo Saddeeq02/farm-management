@@ -1,4 +1,4 @@
-const CACHE_NAME = 'aurapoultry-static-v4';
+const CACHE_NAME = 'aurapoultry-static-v5';
 const STATIC_ASSETS = [
   '/assets/css/app.css',
   '/assets/js/app.js',

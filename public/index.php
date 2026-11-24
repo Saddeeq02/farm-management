@@ -517,7 +517,8 @@ if ($isPartialRequest) {
     ];
     $partial = $blade->renderPartial($viewMap[$currentPage], $partialData);
     header('Content-Type: application/json; charset=utf-8');
-    header('Cache-Control: private, max-age=0, must-revalidate');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
     echo json_encode([
         'ok' => true,
         'page' => $currentPage,
@@ -547,4 +548,6 @@ $viewData = [
     'flashError' => $flashError,
 ];
 
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
 echo $blade->render($viewMap[$currentPage], $viewData);
