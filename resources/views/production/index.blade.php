@@ -152,7 +152,7 @@
                                     class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-1.5 text-xs focus:border-emerald-500 focus:outline-none">
                                 <option value="" data-rate="0">-- No Feed Logged --</option>
                                 @foreach ($inventoryItems as $item)
-                                    @if (in_array($item['category'], ['starter', 'grower', 'layer'], true))
+                                    @if (in_array($item['category'], ['starter', 'grower', 'layer'], true) && (float)($item['total_quantity_g_or_ml'] ?? 0) > 0)
                                         <option value="{{ $item['id'] }}" data-rate="{{ $item['unit_cost_per_g_or_ml'] }}" data-cat="{{ $item['category'] }}" data-rem="{{ (float)$item['total_quantity_g_or_ml'] }}">
                                             [{{ strtoupper($item['category']) }}] {{ $item['item_name'] }} (₦{{ number_format((float)$item['unit_cost_per_g_or_ml'], 4) }}/g • {{ number_format((float)$item['total_quantity_g_or_ml']) }}g left)
                                         </option>
@@ -785,14 +785,14 @@
                                        class="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs font-mono">
                             </div>
                             <div>
-                                <label class="block text-[10px] text-slate-500 mb-0.5">Preferred Feed Stock</label>
+                                <label class="block text-[10px] text-slate-500 mb-0.5">Preferred Feed Stock (Editable)</label>
                                 <select name="flock_overrides[{{ $apb['id'] }}][preferred_feed_id]"
                                         class="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-xs">
-                                    <option value="">Auto ({{ strtoupper($am['recommended_feed_category'] ?? 'starter') }})</option>
+                                    <option value="">Auto: {{ !empty($am['last_feed_item_name']) ? 'Follows last (' . $am['last_feed_item_name'] . ')' : strtoupper($am['recommended_feed_category'] ?? 'starter') }}</option>
                                     @foreach ($inventoryItems as $fIt)
-                                        @if (in_array($fIt['category'], ['starter', 'grower', 'layer'], true))
+                                        @if (in_array($fIt['category'], ['starter', 'grower', 'layer'], true) && (float)($fIt['total_quantity_g_or_ml'] ?? 0) > 0)
                                             <option value="{{ $fIt['id'] }}" {{ (int)($ov['preferred_feed_id'] ?? 0) === (int)$fIt['id'] ? 'selected' : '' }}>
-                                                [{{ strtoupper($fIt['category']) }}] {{ $fIt['item_name'] }}
+                                                [{{ strtoupper($fIt['category']) }}] {{ $fIt['item_name'] }} ({{ number_format((float)$fIt['total_quantity_g_or_ml']) }}g)
                                             </option>
                                         @endif
                                     @endforeach

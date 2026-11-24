@@ -360,6 +360,8 @@ class FarmService
             $loggedToday = false;
             $todayDate = date('Y-m-d');
             $lastFeedCategory = null;
+            $lastFeedItemId = null;
+            $lastFeedItemName = null;
 
             foreach ($batchLogs as $idx => $log) {
                 $logGoodEggs = (int) ($log['good_eggs'] ?? 0);
@@ -419,6 +421,8 @@ class FarmService
 
                 if ($lastFeedCategory === null && $feedItem) {
                     $lastFeedCategory = $feedItem['category'];
+                    $lastFeedItemId = (int) $feedItem['id'];
+                    $lastFeedItemName = (string) ($feedItem['item_name'] ?? '');
                 }
             }
 
@@ -530,6 +534,9 @@ class FarmService
                 'recommended_daily_feed_grams' => $recFeed['total_grams'],
                 'recommended_daily_feed_kg' => $recFeed['total_kg'],
                 'recommended_feed_category' => $recFeed['recommended_category'],
+                'last_feed_item_id' => $lastFeedItemId,
+                'last_feed_item_name' => $lastFeedItemName,
+                'last_feed_category' => $lastFeedCategory,
                 'actual_avg_feed_grams_per_day' => $actualAvgFeedPerDay,
                 'actual_avg_feed_g_per_bird' => $actualAvgFeedPerBird,
                 'feed_logged_days' => $feedLoggedDays,
@@ -756,10 +763,18 @@ class FarmService
                 : $defaultWater;
             $recCat = (string) ($m['recommended_feed_category'] ?? 'starter');
             $prefFeedId = !empty($ov['preferred_feed_id']) ? (int) $ov['preferred_feed_id'] : 0;
+            $lastFeedId = !empty($m['last_feed_item_id']) ? (int) $m['last_feed_item_id'] : 0;
+            $lastFeedCat = !empty($m['last_feed_category']) ? (string) $m['last_feed_category'] : '';
 
-            // Pick preferred or matching available feed item from Inventory (fresh read each iteration)
+            // Pick feed priority:
+            // 1. Explicit Preferred Feed from 24h Auto-Log Settings (if in stock)
+            // 2. Flock's Last Logged Feed (if it has sufficient stock, else another in-stock feed of the SAME category e.g. Starter -> TOPFEED starter)
+            // 3. Age-based recommended feed category with highest remaining stock
+            // 4. Any available feed fallback
             $preferredFeed = null;
-            $feedItem = null;
+            $lastFeedItem = null;
+            $sameCatBest = null;
+            $ageCatBest = null;
             $fallbackFeed = null;
             foreach ($this->db->getTable('inventory_items') as $it) {
                 $cat = (string) ($it['category'] ?? '');
@@ -767,17 +782,32 @@ class FarmService
                 if (!in_array($cat, ['starter', 'grower', 'layer'], true) || $rem <= 0) {
                     continue;
                 }
-                if ($prefFeedId > 0 && (int) ($it['id'] ?? 0) === $prefFeedId) {
+                $itId = (int) ($it['id'] ?? 0);
+                if ($prefFeedId > 0 && $itId === $prefFeedId) {
                     $preferredFeed = $it;
                 }
-                if ($cat === $recCat && ($feedItem === null || $rem > (float) $feedItem['total_quantity_g_or_ml'])) {
-                    $feedItem = $it;
+                if ($lastFeedId > 0 && $itId === $lastFeedId) {
+                    $lastFeedItem = $it;
+                }
+                if ($lastFeedCat !== '' && $cat === $lastFeedCat && ($sameCatBest === null || $rem > (float) $sameCatBest['total_quantity_g_or_ml'])) {
+                    $sameCatBest = $it;
+                }
+                if ($cat === $recCat && ($ageCatBest === null || $rem > (float) $ageCatBest['total_quantity_g_or_ml'])) {
+                    $ageCatBest = $it;
                 }
                 if ($fallbackFeed === null || $rem > (float) $fallbackFeed['total_quantity_g_or_ml']) {
                     $fallbackFeed = $it;
                 }
             }
-            $chosenFeed = $preferredFeed ?? $feedItem ?? $fallbackFeed;
+            if ($preferredFeed !== null) {
+                $chosenFeed = $preferredFeed;
+            } elseif ($lastFeedItem !== null && ((float) $lastFeedItem['total_quantity_g_or_ml'] >= $recGrams || $sameCatBest === null)) {
+                $chosenFeed = $lastFeedItem;
+            } elseif ($sameCatBest !== null) {
+                $chosenFeed = $sameCatBest;
+            } else {
+                $chosenFeed = $ageCatBest ?? $fallbackFeed;
+            }
             $feedItemId = $chosenFeed ? (int) $chosenFeed['id'] : null;
             $gramsToLog = $chosenFeed ? round(min($recGrams, (float) $chosenFeed['total_quantity_g_or_ml']), 2) : 0.0;
 
@@ -3502,6 +3532,51 @@ class FarmService
             'unit_cost_per_g_or_ml' => $unitCost,
             'purchase_date' => !empty($input['purchase_date']) ? (string) $input['purchase_date'] : (string) ($item['purchase_date'] ?? date('Y-m-d')),
         ]);
+    }
+
+    /**
+     * Restock an existing Feed or Medicine inventory item with weighted-average unit cost recalculation.
+     */
+    public function restockInventoryItem(int $itemId, array $input): void
+    {
+        $item = $this->db->findById('inventory_items', $itemId);
+        if (!$item) {
+            throw new InvalidArgumentException('Inventory item not found.');
+        }
+
+        $unitMode = (string) ($input['input_unit_mode'] ?? 'kg');
+        $rawQty = max(0.0001, (float) ($input['quantity_value'] ?? 0));
+        $addedBaseQty = ($unitMode === 'kg' || $unitMode === 'l')
+            ? round($rawQty * 1000.0, 4)
+            : round($rawQty, 4);
+        $addedCost = round(max(0.0, (float) ($input['restock_cost'] ?? 0)), 2);
+        $restockDate = !empty($input['restock_date']) ? (string) $input['restock_date'] : date('Y-m-d');
+
+        $oldRemQty = max(0.0, (float) ($item['total_quantity_g_or_ml'] ?? 0));
+        $oldInitQty = max($oldRemQty, (float) ($item['initial_quantity_g_or_ml'] ?? $oldRemQty));
+        $oldUnitCost = max(0.0, (float) ($item['unit_cost_per_g_or_ml'] ?? 0));
+        $oldTotalCost = max(0.0, (float) ($item['total_cost'] ?? 0));
+
+        $newRemQty = round($oldRemQty + $addedBaseQty, 4);
+        $newInitQty = round($oldInitQty + $addedBaseQty, 4);
+        $newTotalCost = round($oldTotalCost + $addedCost, 2);
+
+        $oldRemValue = $oldRemQty * $oldUnitCost;
+        $newUnitCost = $newRemQty > 0 ? round(($oldRemValue + $addedCost) / $newRemQty, 6) : $oldUnitCost;
+
+        $this->db->update('inventory_items', $itemId, [
+            'initial_quantity_g_or_ml' => $newInitQty,
+            'total_quantity_g_or_ml' => $newRemQty,
+            'total_cost' => $newTotalCost,
+            'unit_cost_per_g_or_ml' => $newUnitCost,
+            'purchase_date' => $restockDate,
+        ]);
+
+        $unitLabel = (($item['unit_type'] ?? 'g') === 'ml') ? 'ml' : 'g';
+        $this->addAiMemory(
+            "Restocked {$item['item_name']}: +" . self::fmtQty($addedBaseQty) . "{$unitLabel} for ₦" . number_format($addedCost, 2) . " (new balance: " . self::fmtQty($newRemQty) . "{$unitLabel}).",
+            'inventory'
+        );
     }
 
     /**

@@ -290,7 +290,12 @@
                                 <div class="text-[11px] text-slate-500 dark:text-slate-400">({{ \App\Core\FarmService::fmtQty((float)$item['initial_bulk']) }} {{ $item['bulk_unit_label'] }})</div>
                             </td>
                             <td class="py-4 px-4 text-right font-mono">
-                                <div class="font-semibold text-slate-900 dark:text-white">{{ \App\Core\FarmService::fmtQty((float)$item['total_quantity_g_or_ml']) }} {{ $item['unit_label'] }}</div>
+                                <div class="font-semibold {{ (float)$item['total_quantity_g_or_ml'] <= 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white' }}">
+                                    {{ \App\Core\FarmService::fmtQty((float)$item['total_quantity_g_or_ml']) }} {{ $item['unit_label'] }}
+                                    @if ((float)$item['total_quantity_g_or_ml'] <= 0)
+                                        <span class="ml-1 px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-[9px] font-bold uppercase">Exhausted</span>
+                                    @endif
+                                </div>
                                 <div class="w-28 ml-auto mt-1 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                                     <div class="h-full {{ $item['low_stock'] ? 'bg-rose-500' : 'bg-emerald-500' }}" style="width: {{ $item['stock_pct'] }}%"></div>
                                 </div>
@@ -308,7 +313,11 @@
                             <td class="py-4 px-5 text-right font-mono font-semibold text-slate-900 dark:text-white">
                                 ₦{{ number_format($item['remaining_value'], 2) }}
                             </td>
-                            <td class="py-4 px-4 text-right whitespace-nowrap">
+                            <td class="py-4 px-4 text-right whitespace-nowrap space-x-1">
+                                <button type="button" onclick="openRestockInventoryModal({{ (int)$item['id'] }})"
+                                        class="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-300 border border-emerald-500/35 text-xs font-sans font-semibold transition cursor-pointer">
+                                    <i class="fa-solid fa-plus"></i> Restock
+                                </button>
                                 <button type="button" onclick="openEditInventoryModal({{ (int)$item['id'] }})"
                                         class="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-sans font-semibold transition cursor-pointer">
                                     <i class="fa-solid fa-pen"></i> Edit
@@ -460,6 +469,72 @@
     </div>
 </div>
 
+<!-- MODAL: RESTOCK INVENTORY ITEM -->
+<div id="restockInventoryModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md hidden opacity-0 transition-opacity duration-300">
+    <div id="restockInventoryModalBox" class="glass-card max-w-md w-full rounded-3xl p-6 border border-emerald-500/40 relative transform scale-95 transition-transform duration-300">
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-500 flex items-center justify-center">
+                    <i class="fa-solid fa-boxes-packing"></i>
+                </div>
+                <div>
+                    <h3 id="restockModalTitle" class="text-base font-bold text-slate-900 dark:text-white">Restock Feed / Medicine</h3>
+                    <p id="restockModalSubtitle" class="text-[11px] text-slate-500 dark:text-slate-400">Adds new stock &amp; recalculates weighted-average unit cost.</p>
+                </div>
+            </div>
+            <button type="button" onclick="closeModal('restockInventoryModal')" class="text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <form method="POST" action="/?page=inventory" class="space-y-3.5 text-xs">
+            @csrf
+            <input type="hidden" name="action" value="restock_inventory_item">
+            <input type="hidden" name="inventory_item_id" id="restockItemId">
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Quantity Added</label>
+                    <input type="number" step="any" min="0.0001" name="quantity_value" id="restockQtyInput" placeholder="e.g. 25" required
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-emerald-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Unit</label>
+                    <select name="input_unit_mode" id="restockUnitSelect"
+                            class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs focus:border-emerald-500 focus:outline-none">
+                        <option value="kg">Kilograms (kg)</option>
+                        <option value="g">Grams (g)</option>
+                        <option value="l">Liters (L)</option>
+                        <option value="ml">Milliliters (ml)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Restock Cost (₦)</label>
+                    <input type="number" step="0.01" min="0" name="restock_cost" id="restockCostInput" placeholder="e.g. 17500" required
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-emerald-700 dark:text-emerald-300 font-bold px-3 py-2 text-xs font-mono focus:border-emerald-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Restock Date</label>
+                    <input type="date" name="restock_date" value="{{ date('Y-m-d') }}" required
+                           class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-2 text-xs font-mono focus:border-emerald-500 focus:outline-none">
+                </div>
+            </div>
+
+            <div class="pt-2 flex items-center justify-end gap-2.5">
+                <button type="button" onclick="closeModal('restockInventoryModal')" class="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold cursor-pointer">
+                    Cancel
+                </button>
+                <button type="submit" class="px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-mono font-bold shadow-md cursor-pointer">
+                    + Confirm Restock
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- MODAL: EDIT INVENTORY ITEM -->
 <div id="editInventoryItemModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md hidden opacity-0 transition-opacity duration-300">
     <div id="editInventoryItemModalBox" class="glass-card max-w-lg w-full max-h-[90vh] overflow-y-auto rounded-3xl p-6 sm:p-7 border border-amber-500/40 relative transform scale-95 transition-transform duration-300">
@@ -566,6 +641,18 @@ foreach ($inventoryItems ?? [] as $_it) {
 }
 echo json_encode($invEditMap, JSON_UNESCAPED_UNICODE);
 ?>;
+
+function openRestockInventoryModal(itemId) {
+    const it = window.invItemsEditMap[String(itemId)] || window.invItemsEditMap[itemId];
+    if (!it) return;
+    document.getElementById('restockItemId').value = it.id;
+    document.getElementById('restockModalTitle').textContent = 'Restock: ' + (it.item_name || 'Product');
+    document.getElementById('restockModalSubtitle').textContent = 'Current remaining: ' + Number(it.total_quantity_g_or_ml || 0).toLocaleString() + (it.unit_type || 'g');
+    document.getElementById('restockQtyInput').value = '';
+    document.getElementById('restockCostInput').value = '';
+    document.getElementById('restockUnitSelect').value = (it.unit_type === 'ml') ? 'l' : 'kg';
+    openModal('restockInventoryModal');
+}
 
 function openEditInventoryModal(itemId) {
     const it = window.invItemsEditMap[String(itemId)] || window.invItemsEditMap[itemId];

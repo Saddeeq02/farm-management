@@ -460,6 +460,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: /?page=inventory');
                 exit;
 
+            case 'restock_inventory_item':
+                $farm->restockInventoryItem((int) ($_POST['inventory_item_id'] ?? 0), $_POST);
+                $setFlash('flash_success', 'Stock restocked successfully and weighted-average unit cost updated.');
+                header('Location: /?page=inventory');
+                exit;
+
             case 'add_inventory_waste':
                 $farm->addInventoryWaste($_POST);
                 $setFlash('flash_success', 'Damaged / wasted stock subtracted from inventory and logged under General Overhead.');

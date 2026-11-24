@@ -731,7 +731,7 @@
             <select name="feed_item_id" id="globalDailyFeedSelect" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white outline-none focus:border-emerald-500">
               <option value="">-- No Feed Logged --</option>
               @foreach ($inventoryItems as $item)
-                @if (in_array($item['category'], ['starter', 'grower', 'layer'], true))
+                @if (in_array($item['category'], ['starter', 'grower', 'layer'], true) && (float)($item['total_quantity_g_or_ml'] ?? 0) > 0)
                   <option value="{{ $item['id'] }}" data-cat="{{ $item['category'] }}" data-rem="{{ (float)$item['total_quantity_g_or_ml'] }}">[{{ strtoupper($item['category']) }}] {{ $item['item_name'] }} (₦{{ number_format((float)$item['unit_cost_per_g_or_ml'], 4) }}/g • {{ number_format((float)$item['total_quantity_g_or_ml']) }}g left)</option>
                 @endif
               @endforeach
