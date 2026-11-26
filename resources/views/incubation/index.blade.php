@@ -42,8 +42,9 @@
                 <div>
                     <label class="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Target Incubation Batch</label>
                     <select name="incubation_batch_id" required class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 text-slate-900 dark:text-white px-3 py-1.5 text-xs focus:border-emerald-500 focus:outline-none">
+                        <option value="ALL_ACTIVE" selected>All Active Batches — Shared Incubator (Auto-Split by Eggs)</option>
                         @foreach ($incubationBatches as $ib)
-                            <option value="{{ $ib['id'] }}">{{ $ib['batch_code'] }} ({{ $ib['status'] }})</option>
+                            <option value="{{ $ib['id'] }}">{{ $ib['batch_code'] }} ({{ $ib['status'] }} • {{ number_format((int)($ib['eggs_set'] ?? 0)) }} eggs)</option>
                         @endforeach
                     </select>
                 </div>

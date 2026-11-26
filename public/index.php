@@ -212,7 +212,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             case 'add_incubation_expense':
                 $farm->addIncubationExpense($_POST);
-                $setFlash('flash_success', 'Batch-linked operational expense recorded and added to chick cost base.');
+                $isSharedIncExp = strtoupper(trim((string) ($_POST['incubation_batch_id'] ?? ''))) === 'ALL_ACTIVE';
+                $setFlash('flash_success', $isSharedIncExp
+                    ? 'General incubator gas/expense split proportionally across all active batches.'
+                    : 'Batch-linked operational expense recorded and added to chick cost base.');
                 header('Location: /?page=incubation');
                 exit;
 

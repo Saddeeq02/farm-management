@@ -1044,24 +1044,64 @@ class FarmService
 
     public function addIncubationExpense(array $input): int
     {
-        $batchId = (int) ($input['incubation_batch_id'] ?? 0);
+        $rawBatch = trim((string) ($input['incubation_batch_id'] ?? ''));
+        $rawType = strtolower(trim((string) ($input['expense_type'] ?? 'gas')));
+        $type = in_array($rawType, ['gas', 'repair', 'other'], true) ? $rawType : 'gas';
+        $gasWeight = $type === 'gas' ? round(max(0.0, (float) ($input['gas_weight_kg'] ?? 0)), 4) : 0.0;
+        $amount = round(max(0.0, (float) ($input['amount'] ?? 0)), 2);
+        $defaultDesc = $type === 'gas' ? 'LPG Gas Refill' : ($type === 'repair' ? 'Incubator Maintenance' : 'Operational Expense');
+        $baseDesc = trim((string) ($input['description'] ?? $defaultDesc)) ?: $defaultDesc;
+        $expDate = !empty($input['date']) ? (string) $input['date'] : date('Y-m-d');
+
+        // Shared / General Incubator Expense: split proportionally by egg count across all Active batches
+        if ($rawBatch === '' || strtoupper($rawBatch) === 'ALL_ACTIVE' || (int) $rawBatch === 0) {
+            $activeBatches = array_values(array_filter(
+                $this->db->getTable('incubation_batches'),
+                fn($b) => ($b['status'] ?? '') === 'Active'
+            ));
+            if (empty($activeBatches)) {
+                throw new RuntimeException('No active incubation batches available to share this incubator expense.');
+            }
+            $totalEggs = 0;
+            foreach ($activeBatches as $ab) {
+                $totalEggs += max(1, (int) ($ab['eggs_set'] ?? 1));
+            }
+            $batchCount = count($activeBatches);
+            $remAmount = $amount;
+            $remGas = $gasWeight;
+            $lastId = 0;
+            foreach ($activeBatches as $idx => $ab) {
+                $eggs = max(1, (int) ($ab['eggs_set'] ?? 1));
+                $isLast = ($idx === $batchCount - 1);
+                $shareAmt = $isLast ? round($remAmount, 2) : round($amount * ($eggs / $totalEggs), 2);
+                $shareGas = $isLast ? round($remGas, 4) : round($gasWeight * ($eggs / $totalEggs), 4);
+                $remAmount = round($remAmount - $shareAmt, 2);
+                $remGas = round($remGas - $shareGas, 4);
+
+                $lastId = $this->db->insert('incubation_expenses', [
+                    'incubation_batch_id' => (int) $ab['id'],
+                    'expense_type' => $type,
+                    'gas_weight_kg' => max(0.0, $shareGas),
+                    'amount' => max(0.0, $shareAmt),
+                    'description' => $baseDesc . " (Shared across {$batchCount} active batches • {$eggs}/{$totalEggs} eggs)",
+                    'date' => $expDate,
+                ]);
+            }
+            return $lastId;
+        }
+
+        $batchId = (int) $rawBatch;
         if (!$this->db->findById('incubation_batches', $batchId)) {
             throw new RuntimeException('Selected Incubation Batch does not exist.');
         }
-
-        $rawType = strtolower(trim((string) ($input['expense_type'] ?? 'gas')));
-        $type = in_array($rawType, ['gas', 'repair', 'other'], true) ? $rawType : 'gas';
-        $gasWeight = $type === 'gas' ? max(0.0, (float) ($input['gas_weight_kg'] ?? 0)) : 0.0;
-        $amount = max(0.0, (float) ($input['amount'] ?? 0));
-        $defaultDesc = $type === 'gas' ? 'LPG Gas Refill' : ($type === 'repair' ? 'Incubator Maintenance' : 'Operational Expense');
 
         return $this->db->insert('incubation_expenses', [
             'incubation_batch_id' => $batchId,
             'expense_type' => $type,
             'gas_weight_kg' => $gasWeight,
             'amount' => $amount,
-            'description' => trim((string) ($input['description'] ?? $defaultDesc)) ?: $defaultDesc,
-            'date' => $input['date'] ?: date('Y-m-d'),
+            'description' => $baseDesc,
+            'date' => $expDate,
         ]);
     }
 
