@@ -192,6 +192,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['action'] ?? '') === '') {
 
 // Handle POST Actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Force fresh live Supabase read on the immediate post-redirect GET across any Vercel container
+    setcookie('bs_fresh_db', '1', [
+        'expires' => time() + 20,
+        'path' => '/',
+        'secure' => $isHttps,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
     $action = $_POST['action'] ?? '';
 
     try {

@@ -21,7 +21,7 @@ class Database
     private int $mutationVersion = 0;
     private mixed $curlHandle = null;
     private string $supabaseCacheFile = '';
-    private int $supabaseCacheTtlSeconds = 600;
+    private int $supabaseCacheTtlSeconds = 15;
 
     public function __construct(string $storageDir, string $schemaFile)
     {
@@ -156,10 +156,29 @@ class Database
         return is_string($raw) ? $raw : null;
     }
 
+    private function shouldBypassSupabaseCache(): bool
+    {
+        if (PHP_SAPI === 'cli') {
+            return true;
+        }
+        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+        if ($method !== 'GET' && $method !== 'HEAD') {
+            return true;
+        }
+        if (($_GET['action'] ?? '') === 'cron_autofeed') {
+            return true;
+        }
+        if (($_COOKIE['bs_fresh_db'] ?? '') === '1') {
+            return true;
+        }
+        return false;
+    }
+
     private function loadStore(): void
     {
         if ($this->usingSupabase) {
-            if ($this->supabaseCacheFile !== '' && file_exists($this->supabaseCacheFile)) {
+            $bypassCache = $this->shouldBypassSupabaseCache();
+            if (!$bypassCache && $this->supabaseCacheFile !== '' && file_exists($this->supabaseCacheFile)) {
                 $age = time() - (int) @filemtime($this->supabaseCacheFile);
                 if ($age >= 0 && $age <= $this->supabaseCacheTtlSeconds) {
                     $cached = json_decode((string) @file_get_contents($this->supabaseCacheFile), true);
